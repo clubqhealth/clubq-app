@@ -243,6 +243,8 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .ddlist{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:6px}
 .ddlist label{display:flex;gap:8px;align-items:center;padding:6px 8px;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:400;margin:0;border-radius:4px}
 .ddlist label:hover{background:var(--surface-2)}
+.ddgroup{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--ink-3);padding:10px 8px 2px}
+.ddgroup:first-child{padding-top:4px}
 .ddlist input{width:auto;margin:0}
 @media (max-width:560px){ .exrow .exi.vid{width:100%} }
 .exrow .exname{border:0;background:transparent;text-align:left;color:var(--ink);font-size:15px;padding:0;font-weight:500}
@@ -870,6 +872,7 @@ function libraryView(){
     <div id="libResults" class="libwrap ${state.libEdit?'editing':''}">${libResults()}</div>
   </div>`;
 }
+function catSummary(cats){ if(!cats.length) return 'Unsorted'; const t=cats.map(c=>c.sub?`${c.cat} / ${c.sub}`:c.cat); return t.length<=2 ? t.join(', ') : t.slice(0,2).join(', ')+' +'+(t.length-2)+' more'; }
 function ddSummary(arr){ arr=(arr||[]).filter(Boolean); if(!arr.length) return 'Choose…'; return arr.length<=3 ? arr.join(', ') : arr.slice(0,2).join(', ')+' +'+(arr.length-2)+' more'; }
 function exEditor(){
   const e=state.exEdit; if(!e) return '';
@@ -878,7 +881,7 @@ function exEditor(){
     <header><div class="row between"><h2>${e.id?'Edit exercise':'New exercise'}</h2><button class="btn ghost sm" data-act="closeExEdit">Close</button></div></header>
     <div class="results" style="padding:14px 16px"><div class="stack">
       <div class="grid2"><div class="field"><label>Name</label><input data-f="ex" data-k="name" value="${esc(e.name||'')}"></div><div class="field"><label>Skill</label><select data-f="ex" data-k="skill">${[1,2,3,4,5].map(v=>`<option value="${v}" ${+e.skill===v?'selected':''}>${v}</option>`).join('')}</select></div></div>
-      <div class="field"><label>Categories</label><div class="catgrid">${CATS.map(c=>`<div><div class="lsub" style="padding:4px 0">${esc(c)}</div><div class="row" style="gap:6px">${(SUBS[c].length?SUBS[c]:[null]).map(sub=>{ const on=(e.cats||[]).some(x=>x.cat===c && (x.sub||null)===(sub||null)); return `<button class="hab sm" data-act="exCat" data-cat="${esc(c)}" data-sub="${esc(sub||'')}" aria-pressed="${on}">${esc(sub||c)}</button>`; }).join('')}</div></div>`).join('')}</div></div>
+      <div class="field"><label>Categories</label><details class="dd"><summary><span>${esc(catSummary(e.cats||[]))}</span><i>▾</i></summary><div class="ddlist">${CATS.map(c=>`<div class="ddgroup">${esc(c)}</div>${(SUBS[c].length?SUBS[c]:[null]).map(sub=>{ const on=(e.cats||[]).some(x=>x.cat===c && (x.sub||null)===(sub||null)); return `<label><input type="checkbox" data-f="excat" data-cat="${esc(c)}" data-sub="${esc(sub||'')}" ${on?'checked':''}> ${esc(sub||c)}</label>`; }).join('')}`).join('')}</div></details></div>
       <div class="grid2">
         <div class="field"><label>Equipment</label><details class="dd"><summary><span>${esc(ddSummary(e.equipment||[]))}</span><i>▾</i></summary><div class="ddlist">${EQUIP.map(v=>`<label><input type="checkbox" data-f="exchk" data-k="equipment" data-v="${esc(v)}" ${(e.equipment||[]).includes(v)?'checked':''}> ${esc(v)}</label>`).join('')}</div></details></div>
         <div class="field"><label>Muscles worked</label><details class="dd"><summary><span>${esc(ddSummary(e.muscles||[]))}</span><i>▾</i></summary><div class="ddlist">${MUSCLES.map(v=>`<label><input type="checkbox" data-f="exchk" data-k="muscles" data-v="${esc(v)}" ${(e.muscles||[]).includes(v)?'checked':''}> ${esc(v)}</label>`).join('')}</div></details></div>
@@ -1146,6 +1149,7 @@ document.addEventListener('pointerup', e => { if(e.pointerType==='touch') return
 document.addEventListener('change', e => {
   const el=e.target;
   if(el.dataset.f==='exi' && el.tagName==='SELECT'){ const ex=store.exercises[el.dataset.id]; if(ex){ const k=el.dataset.k; ex[k]= k==='skill' ? +el.value : el.value; store.put('exercises', ex); } return; }
+  if(el.dataset.f==='excat'){ const c=el.dataset.cat, sub=el.dataset.sub||null; const arr=state.exEdit.cats=state.exEdit.cats||[]; const i=arr.findIndex(x=>x.cat===c && (x.sub||null)===sub); if(el.checked && i<0) arr.push({cat:c, sub}); if(!el.checked && i>=0) arr.splice(i,1); const sum=el.closest('details').querySelector('summary span'); if(sum) sum.textContent=catSummary(arr); return; }
   if(el.dataset.f==='exchk'){ const arr=state.exEdit[el.dataset.k]=state.exEdit[el.dataset.k]||[]; const v=el.dataset.v; const i=arr.indexOf(v); if(el.checked && i<0) arr.push(v); if(!el.checked && i>=0) arr.splice(i,1); if(el.dataset.k==='equipment'){ if(v!=='None' && el.checked && arr.includes('None')) { arr.splice(arr.indexOf('None'),1); const nb=el.closest('.ddlist').querySelector('input[data-v="None"]'); if(nb) nb.checked=false; } if(!arr.length){ arr.push('None'); const nb=el.closest('.ddlist').querySelector('input[data-v="None"]'); if(nb) nb.checked=true; } } const sum=el.closest('details').querySelector('summary span'); if(sum) sum.textContent=ddSummary(arr); return; }
   if(el.dataset.f==='lib' && (el.tagName==='SELECT' || el.type==='checkbox')){ state.lib=state.lib||{}; state.lib[el.dataset.k]= el.type==='checkbox' ? el.checked : el.value; render(); return; }
   if(el.dataset.f==='ex' && el.tagName==='SELECT' && state.exEdit){ const k=el.dataset.k; state.exEdit[k] = k==='at_clubq' ? el.value==='yes' : k==='skill' ? +el.value : el.value; return; }

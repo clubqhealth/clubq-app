@@ -72,6 +72,7 @@ main{padding:16px;max-width:1080px;width:100%;margin:0 auto}
 .btn.sm{padding:5px 10px;font-size:13px}
 .btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.item:focus-visible{outline:2px solid var(--camel);outline-offset:2px}
 input,select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 10px;width:100%;min-width:0}
+textarea.grow{resize:none;overflow:hidden;line-height:1.35;display:block}
 input[inputmode]{text-align:left;font-variant-numeric:tabular-nums}
 label{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;display:block;margin-bottom:4px}
 .field{display:flex;flex-direction:column}
@@ -86,6 +87,7 @@ label{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:
 .kpi{display:grid;grid-template-columns:1fr auto auto auto;gap:6px 12px;align-items:baseline;font-size:14px}
 .kpi .h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
 .kpi .up{color:var(--camel)} .kpi .down{color:var(--danger)}
+.tg-on{color:#3F7A4C} .tg-near{color:#B07A1F} .tg-off{color:var(--danger)} .tbl td.tg-on, .tbl td.tg-near, .tbl td.tg-off{font-weight:600}
 .kpihist{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:6px 10px 8px;border-left:2px solid var(--line);margin:0 0 4px}
 /* exercise block in session */
 .ex{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
@@ -160,6 +162,8 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .hist .hs.best{border-color:var(--camel);color:var(--camel)}
 .hist .hlinks{margin-left:6px;font-size:13px}
 .hist .hg{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.restline{margin-top:6px}
+.restpill{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--espresso);background:var(--surface-2,#F1EEE9);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
 .hist .hs+.hg{margin-left:6px}
 .rx .wu{display:inline-block;color:var(--ink-3);font-weight:500} .rx .wm{display:inline-block;white-space:nowrap}
 .hist a{color:var(--ink-2);font-weight:500}
@@ -537,6 +541,9 @@ function paceLabel(name){ const n=String(name).toLowerCase(); if(/ski|row|concep
 function rx(it){ if(isCardio(it)) return cardioRx(it); const u=unitOf(it), lu=luOf(it); if(it.setsRx && !rxUniform(it)) return (+it.warmup?`<span class="wu">${+it.warmup} warm-up${+it.warmup>1?'s':''} +</span> `:'')+`${it.sets} sets · `+it.setsRx.map(r=>`${r.load?r.load+lu+'×':''}${r.reps}${usfx(u)}`).join(' · '); const parts=[u==='reps'?`${it.sets}×${it.reps}`:`${it.sets} × ${it.reps}${usfx(u)}`]; if(it.load) parts.push(`@ ${it.load}${lu}`); if(+it.warmup) return `<span class="wu">${+it.warmup} warm-up${+it.warmup>1?'s':''} +</span> <span class="wm">${parts.join(' ')}</span>`; return parts.join(' '); }
 function fmtRest(r){ r=+r; if(!r) return ''; return r%60===0 ? (r/60)+' min' : r>=120 ? Math.floor(r/60)+':'+String(r%60).padStart(2,'0') : r+'s'; }
 function rxMeta(it){ const p=[]; if(it.rpe) p.push(it.rpe==='F'?'To failure':'RPE '+it.rpe); if(it.rest) p.push('Rest '+fmtRest(it.rest)); return p.join(' · '); }
+function rpeMeta(it){ return it.rpe ? (it.rpe==='F'?'To failure':'RPE '+it.rpe) : ''; }
+function noteHTML(n){ return esc(n||'').replace(/\n/g,'<br>'); }
+function restLine(it){ return it.rest ? `<div class="restline"><span class="restpill">Rest ${fmtRest(it.rest)} between sets</span></div>` : ''; }
 const METRICS=[['weight','Bodyweight','kg',1],['calories','Calories','kcal',0],['protein','Protein','g',0],['steps','Steps','',0]];
 function mid(cid,date){ return cid+'__'+date; }
 function metricsFor(cid){ return Object.values(store.metrics).filter(m=>m.clientId===cid).sort((a,b)=>a.date.localeCompare(b.date)); }
@@ -565,10 +572,11 @@ function lineChart(pts, o){ o=o||{}; const W=320,H=132,pl=40,pr=12,pt=22,pb=22;
     <text x="${pl}" y="${H-6}" font-size="10" fill="var(--ink-3)" font-family="inherit">${fmtShort(o.from||pts[0].date)}</text>
     <text x="${W-pr}" y="${H-6}" text-anchor="end" font-size="10" fill="var(--ink-3)" font-family="inherit">${fmtShort(o.to||last.date)}</text>
   </svg>`; }
-function weeklyTable(cid, tg, n){ const t=today(); const weeks=Array.from({length:n||6},(_,i)=>weekAgg(cid, addDays(weekStart(t),-7*i)));
+function tgClass(v, target, atLeast){ if(v==null || !target) return ''; const d=(v-target)/target; if(atLeast && d>=0) return 'tg-on'; const a=Math.abs(d); return a<=0.03?'tg-on':a<=0.05?'tg-near':'tg-off'; }
+function weeklyTable(cid, tg, n){ const t=today(); const weeks=Array.from({length:n||6},(_,i)=>weekAgg(cid, addDays(weekStart(t),-7*i))); tg=tg||{};
   return `<div class="card" style="overflow-x:auto;padding:8px 12px"><table class="tbl"><thead><tr><th>Week of</th><th>Logged</th><th>Weight</th><th>Calories</th><th>Protein</th><th>Steps</th></tr></thead><tbody>
-    ${weeks.map(w=>`<tr><td>${fmtShort(w.ws)}</td><td class="num">${w.logged}/7</td><td class="num">${fmtNum(w.weight,1)}</td><td class="num">${fmtNum(w.calories,0)}</td><td class="num">${fmtNum(w.protein,0)}</td><td class="num">${fmtNum(w.steps,0)}</td></tr>`).join('')}
-  </tbody></table><p class="muted small" style="margin:8px 0 0">Averages of the days logged that week.${tg&&tg.calories?` Targets: ${fmtNum(tg.calories,0)} kcal, ${fmtNum(tg.protein,0)} g protein, ${fmtNum(tg.steps,0)} steps.`:''}</p></div>`; }
+    ${weeks.map(w=>`<tr><td>${fmtShort(w.ws)}</td><td class="num">${w.logged}/7</td><td class="num">${fmtNum(w.weight,1)}</td><td class="num ${tgClass(w.calories,tg.calories,false)}">${fmtNum(w.calories,0)}</td><td class="num ${tgClass(w.protein,tg.protein,true)}">${fmtNum(w.protein,0)}</td><td class="num ${tgClass(w.steps,tg.steps,true)}">${fmtNum(w.steps,0)}</td></tr>`).join('')}
+  </tbody></table><p class="muted small" style="margin:8px 0 0">Averages of the days logged that week.${tg.calories||tg.protein||tg.steps?` Targets: ${[tg.calories&&fmtNum(tg.calories,0)+' kcal', tg.protein&&fmtNum(tg.protein,0)+' g protein', tg.steps&&fmtNum(tg.steps,0)+' steps'].filter(Boolean).join(', ')}. <span class="tg-on">Green</span> within 3%, <span class="tg-near">amber</span> within 5%, <span class="tg-off">red</span> further out. Protein and steps above target count as on target.`:''}</p></div>`; }
 function checkinComplete(m){ return METRICS.every(([k])=>m[k]!=null && m[k]!==''); }
 function compliance(cid){
   const t=today(), from=addDays(t,-27);
@@ -594,7 +602,10 @@ function render(){
   if (auth.error && !signedIn) { m.innerHTML = `<div class="stack" style="max-width:480px;margin:40px auto"><h1>Not set up yet</h1><p style="color:var(--ink-2)">${esc(auth.error)}</p><button class="btn" data-act="signout">Use a different email</button></div>`; return; }
   if (!store.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
   m.innerHTML = (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '');
+  m.querySelectorAll('textarea.grow').forEach(autosize);
 }
+function autosize(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
+document.addEventListener('input', e => { if(e.target.tagName==='TEXTAREA' && e.target.classList.contains('grow')) autosize(e.target); });
 
 function loginView(){
   return `<div class="stack" style="max-width:420px;margin:40px auto">
@@ -825,7 +836,7 @@ function reviewView(d, c){
       <div class="row"><span class="pill done">Completed · ${ok}/${tot} sets${tot-ok?` · ${tot-ok} missed`:''}</span><button class="btn" data-act="reviewEdit">Edit workout</button></div></div>
     ${d.rating||d.clientNote ? `<div class="card"><label>Client feedback</label>${d.rating?`<b class="num">${d.rating}/10</b>${d.clientNote?' · ':''}`:''}${esc(d.clientNote||'')}</div>`:''}
     ${runs(d.items).map(r=>{ const inner=r.idxs.map(i=>{ const it=d.items[i]; const h=exHistory(d.clientId,it,d.id); return `<div class="ex">
-      <div class="row between" style="align-items:flex-start"><div><span class="tag">${itemLabel(d.items,i)}</span><b style="color:var(--ink)">${esc(exName(it))}</b>${it.addedByClient?' <span class="pill">Added by client</span>':''}${it.swappedFrom?` <span class="pill">Swapped from ${esc(it.swappedFrom)}</span>`:''}<div class="meta">${[it.note, rxMeta(it)].filter(Boolean).map(esc).join(' · ')}${h.last?` · last time ${h.last.cardio?esc(h.last.summary):h.last.sets.map(fmtSet).join(', ')}`:''}</div></div><div class="rx num">${rx(it)}</div></div>
+      <div class="row between" style="align-items:flex-start"><div><span class="tag">${itemLabel(d.items,i)}</span><b style="color:var(--ink)">${esc(exName(it))}</b>${it.addedByClient?' <span class="pill">Added by client</span>':''}${it.swappedFrom?` <span class="pill">Swapped from ${esc(it.swappedFrom)}</span>`:''}<div class="meta">${[noteHTML(it.note), esc(rxMeta(it))].filter(Boolean).join(' · ')}${h.last?` · last time ${h.last.cardio?esc(h.last.summary):h.last.sets.map(fmtSet).join(', ')}`:''}</div></div><div class="rx num">${rx(it)}</div></div>
       ${isCardio(it) ? `<div class="rev"><span class="h">Planned</span><span class="h">Did</span><span class="h">RPE</span><span></span><span class="num">${esc(cardioRx(it))}</span>${(it.done||[])[0]&&it.done[0].ok?`<span class="num ok">✓ ${esc(cardioLog(it.done[0],it.cardio).replace(/ @[\d.]+$/,''))}</span><span class="num">${it.done[0].rpe??'–'}</span>`:`<span class="miss">Missed</span><span></span>`}<span></span></div>`
       : `<div class="rev"><span class="h">Set</span><span class="h">Planned</span><span class="h">Did</span><span class="h">RPE</span><span class="h">Note</span>
         ${Array.from({length:it.sets||0},(_,k)=>{ const p=rxOf(it,k); const x=(it.done||[])[k]; const u=unitOf(it); const lu=luOf(it); const planned=`${p.load?p.load+lu+' × ':''}${p.reps}${usfx(u)}`; return `<span class="n num">${k+1}</span><span class="num muted">${esc(planned)}</span>${x&&x.ok?`<span class="num ok">✓ ${x.load?x.load+lu+(x.reps!=null&&x.reps!==''?' × ':''):''}${x.reps!=null&&x.reps!==''?x.reps+usfx(u):''}</span><span class="num">${x.rpe!=null&&x.rpe!==''?rpeLabel(x.rpe):(p.rpe!=null?'<span class="muted">'+rpeLabel(p.rpe)+'</span>':'–')}</span><span class="small muted">${esc(x.note||'')}</span>`:`<span class="miss">Missed</span><span></span><span></span>`}`; }).join('')}
@@ -871,7 +882,7 @@ function sessionEditor(){
           <span class="row"><button class="btn sm" data-act="rxSets" data-i="${i}" data-v="1">+ Set</button><button class="btn ghost sm" data-act="rxSets" data-i="${i}" data-v="-1" ${it.sets<=1?'disabled':''}>– Set</button>${it.sets>1 && !rxUniform(it)?`<button class="btn ghost sm" data-act="rxSame" data-i="${i}">Copy set 1 to all</button>`:''}</span>
           <span class="row" style="flex-wrap:nowrap"><label style="margin:0">Rest</label><select data-i="${i}" data-f="rest" style="width:auto;padding:6px 8px" aria-label="Rest between sets">${[['','–'],[30,'30s'],[45,'45s'],[60,'60s'],[75,'75s'],[90,'90s'],[120,'2 min'],[150,'2:30'],[180,'3 min'],[240,'4 min'],[300,'5 min']].map(([v,l])=>`<option value="${v}" ${String(it.rest??'')===String(v)?'selected':''}>${l}</option>`).join('')}</select></span>
         </div>`; })()}
-        <input style="margin-top:8px" data-i="${i}" data-f="note" value="${esc(it.note||'')}" placeholder="Cue or note for this exercise">
+        <textarea class="grow" rows="1" style="margin-top:8px" data-i="${i}" data-f="note" placeholder="Cue or note for this exercise. Enter for a new line.">${esc(it.note||'')}</textarea>
         ${d.status==='done' ? `<div class="res">${isCardio(it) ? ((it.done||[])[0]&&it.done[0].ok ? `<span class="ok num">✓ ${esc(cardioLog(it.done[0], it.cardio))}</span>` : `<span class="miss">Missed</span>`) : Array.from({length:it.sets||0},(_,k)=>{ const x=(it.done||[])[k]; return x&&x.ok ? `<span class="ok num">✓ Set ${k+1} · ${fmtSet(Object.assign({unit:unitOf(it), lu:luOf(it)},x))}${x.note?` <i>“${esc(x.note)}”</i>`:''}</span>` : `<span class="miss">Set ${k+1} · Missed</span>`; }).join('')}</div>` : ''}
       </div>`; }).join(''); return r.idxs.length>1 ? `<div class="ss"><div class="ssh">Superset ${r.letter} · ${r.idxs.length} exercises, alternate sets</div>${inner}</div>` : inner; }).join('')}
       ${d.items.length ? `<div class="row between"><button class="btn" data-act="openPicker">+ Add from library</button><span class="muted small">${d.items.length} exercise${d.items.length===1?'':'s'}</span></div>` : ''}
@@ -1035,9 +1046,9 @@ function clientSession(s){
     <div class="progress" aria-label="Sets completed"><i id="progBar" style="width:${total?Math.round(doneN/total*100):0}%"></i></div>
     <div class="muted small num" id="progText">${doneN} of ${total} sets logged</div>
     ${runs(items).map(r=>{ const inner=r.idxs.map(i=>{ const it=items[i]; const h=exHistory(s.clientId,it,s.id); const bestBefore=h.best?e1rm(h.best.set):0; const v=(exOf(it)||{}).videoUrl; const lbl=itemLabel(items,i); return `<div class="ex">
-      <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div>${lbl?`<span class="tag">${lbl}</span>`:''}<h4 style="display:inline">${esc(exName(it))}</h4>${[it.note, rxMeta(it)].filter(Boolean).length?`<div class="meta">${[it.note, rxMeta(it)].filter(Boolean).map(esc).join(' · ')}</div>`:''}
+      <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div>${lbl?`<span class="tag">${lbl}</span>`:''}<h4 style="display:inline">${esc(exName(it))}</h4>${[it.note, rpeMeta(it)].filter(Boolean).length?`<div class="meta">${[noteHTML(it.note), esc(rpeMeta(it))].filter(Boolean).join(' · ')}</div>`:''}
 </div><div class="rx num">${rx(it)}</div></div>
-<div class="hist">${h.last?(h.last.cardio?`<span class="hl">Last</span><span class="hs">${esc(h.last.summary)}</span>`:`<span class="hl">Last</span>${h.last.sets.map(x=>`<span class="hs">${fmtSet(x)}</span>`).join('')}`):'<span class="hl">First time</span>'}${h.best && !(h.last&&h.last.cardio)?`<span class="hg"><span class="hl">Best</span><span class="hs best">${fmtSet(h.best.set)}</span></span>`:''}${v||s.status!=='done'?`<span class="hlinks">${v?`<a href="${esc(v)}" data-act="video" data-url="${esc(v)}" data-title="${esc(exName(it))}">Watch</a>`:''}${v&&s.status!=='done'?' · ':''}${s.status!=='done'?`<a href="#" data-act="swapPicker" data-i="${i}">Swap</a>`:''}</span>`:''}</div>
+${restLine(it)}<div class="hist">${h.last?(h.last.cardio?`<span class="hl">Last</span><span class="hs">${esc(h.last.summary)}</span>`:`<span class="hl">Last</span>${h.last.sets.map(x=>`<span class="hs">${fmtSet(x)}</span>`).join('')}`):'<span class="hl">First time</span>'}${h.best && !(h.last&&h.last.cardio)?`<span class="hg"><span class="hl">Best</span><span class="hs best">${fmtSet(h.best.set)}</span></span>`:''}${v||s.status!=='done'?`<span class="hlinks">${v?`<a href="${esc(v)}" data-act="video" data-url="${esc(v)}" data-title="${esc(exName(it))}">Watch</a>`:''}${v&&s.status!=='done'?' · ':''}${s.status!=='done'?`<a href="#" data-act="swapPicker" data-i="${i}">Swap</a>`:''}</span>`:''}</div>
       ${isCardio(it) ? (()=>{ const d=(it.done||[])[0]||{}; const c=it.cardio||{}; const m=cmode(d.mode||c.mode); return `<div class="clog">
         <div class="field"><label>Type</label><select data-i="${i}" data-k="0" data-cf="mode">${CMODES.map(([v,l])=>`<option value="${v}" ${m===v?'selected':''}>${l}</option>`).join('')}</select></div>
         ${m==='interval' ? `<div class="field"><label>Work s</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="workSec" value="${d.workSec??c.workSec??''}"></div><div class="field"><label>Rest s</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="restSec" value="${d.restSec??c.restSec??''}"></div><div class="field"><label>Rounds</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="rounds" value="${d.rounds??c.rounds??''}"></div>`

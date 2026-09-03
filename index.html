@@ -220,7 +220,10 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 @media (max-width:560px){ .grid4{grid-template-columns:1fr 1fr} }
 .lcat{font-family:var(--display);font-size:30px;font-weight:600;color:var(--ink);margin:22px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .lcat:first-child{margin-top:4px}
-.lsub{font-size:12px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;color:var(--ink-2);padding:12px 8px 4px}
+.lsub{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--ink);padding:16px 8px 6px;margin-bottom:4px;border-bottom:2px solid var(--line)}
+.lsub .cnt{font-size:12px;font-weight:600;color:var(--ink-3);letter-spacing:0}
+.subblock+.subblock{margin-top:6px}
+.catgrid .lsub{border:0;padding:6px 0 2px;font-size:11px;color:var(--ink-3)}
 .subblock{border-radius:var(--r);padding:2px 0 6px}
 .subblock.over{background:var(--accent-soft);outline:2px solid var(--ink)}
 .exrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;padding:9px 8px;border-radius:var(--r-sm);color:var(--ink);font-size:15px}
@@ -359,7 +362,7 @@ const store = {
     ingest('sessions', se.data); ingest('metrics', me.data); ingest('exmeta', ex.data); auth.assignments = cc.data||[];
     if (lib.error) { console.error(lib.error); toast('Library table missing: run the latest SQL in Supabase.'); }
     ingest('exercises', lib.data);
-    if (!lib.error && !(lib.data||[]).length && auth.coach && auth.coach.role==='admin') await this.seedLibrary();
+
     this.ready=true; this.emit();
     // live changes from other devices
     this.sb.channel('clubq').on('postgres_changes', {event:'*', schema:'public'}, p => {
@@ -370,10 +373,11 @@ const store = {
     }).subscribe();
   },
   async seedLibrary(){
+    const chk=await this.sb.from('exercises').select('id',{count:'exact',head:true}); if((chk.count||0)>0){ toast('Library already has exercises'); return; }
     const videos={}; Object.values(this.exmeta).forEach(m=>{ if(m.videoUrl) videos[m.name.toLowerCase()]=m.videoUrl; });
     const rows = SEED.exercises.map(e=>({id:uid('x'), name:e.name, cats:e.cats, skill:e.skill, equipment:e.equipment, muscles:e.muscles, plane:e.plane, at_clubq:e.at_clubq, mode:e.mode||null, video_url:videos[e.name.toLowerCase()]||null, notes:e.why||null, archived:false}));
     toast('Setting up the library…');
-    for (let i=0;i<rows.length;i+=100){ const {error}=await this.sb.from('exercises').insert(rows.slice(i,i+100)); if(error){ console.error(error); toast('Library setup failed: '+error.message); return; } }
+    for (let i=0;i<rows.length;i+=100){ const {error}=await this.sb.from('exercises').insert(rows.slice(i,i+100)); if(error){ console.error(error); toast('Library setup failed: '+error.message); const re=await this.sb.from('exercises').select('*'); const o={}; (re.data||[]).forEach(r=>{ const v=MAP.exercises.fromRow(r); o[v.id]=v; }); this.exercises=o; this.emit(); return; } }
     const o={}; rows.forEach(r=>{ const v=MAP.exercises.fromRow(r); o[v.id]=v; }); this.exercises=o; toast('Library ready: '+rows.length+' exercises'); this.emit();
   },
   async sendLink(email){
@@ -796,7 +800,7 @@ function groupedHTML(list, opts){ // opts: {act, cat (filter), edit}
   const catOrder=[...CATS,'Unsorted']; order.sort((A,B)=>{ const a=blocks[A], b=blocks[B]; const ca=catOrder.indexOf(a.cat), cb=catOrder.indexOf(b.cat); if(ca!==cb) return ca-cb; const sa=(SUBS[a.cat]||[]).indexOf(a.sub), sb=(SUBS[b.cat]||[]).indexOf(b.sub); return sa-sb; });
   let out='', lastCat=null;
   order.forEach(k=>{ const bl=blocks[k]; if(bl.cat!==lastCat){ lastCat=bl.cat; out+=`<h2 class="lcat" id="cat-${slug(bl.cat)}">${esc(bl.cat)}</h2>`; }
-    out+=`<div class="subblock" data-cat="${esc(bl.cat)}" data-sub="${esc(bl.sub||'')}">${bl.sub?`<div class="lsub">${esc(bl.sub)}</div>`:''}${bl.items.sort((a,b)=>(a.skill-b.skill)||a.name.localeCompare(b.name)).map(e=>exRow(e, opts, bl)).join('')}</div>`; });
+    out+=`<div class="subblock" data-cat="${esc(bl.cat)}" data-sub="${esc(bl.sub||'')}">${bl.sub?`<div class="lsub"><span>${esc(bl.sub)}</span><span class="cnt num">${bl.items.length}</span></div>`:''}${bl.items.sort((a,b)=>(a.skill-b.skill)||a.name.localeCompare(b.name)).map(e=>exRow(e, opts, bl)).join('')}</div>`; });
   return out || '<div class="empty">Nothing matches.</div>';
 }
 function exRow(e, opts, bl){
@@ -840,6 +844,7 @@ function libraryView(){
     <input data-f="lib" data-k="q" value="${esc(f.q||'')}" placeholder="Search name, category, equipment, muscle">
     <div class="chips" id="catJump"><button data-act="libCat" data-v="" aria-pressed="${!f.cat}">All</button>${[...CATS,'Unsorted'].map(c=>`<button data-act="libCat" data-v="${c}" aria-pressed="${f.cat===c}">${c}</button>`).join('')}</div>
     <div class="filters">${sel('skill',[1,2,3,4,5],f.skill,'Skill')}${sel('muscle',MUSCLES,f.muscle,'Muscle')}${sel('equip',EQUIP.filter(x=>x!=='None'),f.equip,'Equipment')}${sel('plane',PLANES,f.plane,'Plane')}<select class="lf" data-f="lib" data-k="avail"><option value="">Anywhere</option><option value="yes" ${f.avail==='yes'?'selected':''}>At ClubQ</option><option value="no" ${f.avail==='no'?'selected':''}>Not at ClubQ</option></select>${(f.skill||f.muscle||f.equip||f.plane||f.avail||f.q)?`<button class="btn ghost sm" data-act="libClear">Clear</button>`:''}${isAdmin?`<label class="row small" style="margin:0;text-transform:none;letter-spacing:0;gap:6px"><input type="checkbox" data-f="lib" data-k="archived" ${f.archived?'checked':''} style="width:auto"> Archived</label>`:''}</div>
+    ${!Object.keys(store.exercises).length && isAdmin && store.sb ? `<div class="card stack"><b style="color:var(--ink)">The library is empty</b><div class="muted small">Load the 408 starter exercises, already placed into your categories. Do this once.</div><button class="btn primary" data-act="seedLib" style="align-self:flex-start">Load starter library</button></div>` : ''}
     <div id="libResults" class="libwrap ${state.libEdit?'editing':''}">${libResults()}</div>
   </div>`;
 }
@@ -968,6 +973,7 @@ document.addEventListener('click', e => {
     case 'libCat': state.lib=state.lib||{}; state.lib.cat=el.dataset.v; render(); break;
     case 'libClear': state.lib={cat:(state.lib||{}).cat||''}; render(); break;
     case 'libEdit': state.libEdit=!state.libEdit; render(); break;
+    case 'seedLib': store.seedLibrary(); break;
     case 'exNew': state.exEdit={name:'', cats:(state.lib&&state.lib.cat&&state.lib.cat!=='Unsorted')?[{cat:state.lib.cat, sub:(SUBS[state.lib.cat]||[])[0]||null}]:[], skill:1, equipment:['None'], muscles:[], plane:'', at_clubq:true, mode:'', videoUrl:'', notes:''}; render(); break;
     case 'exEdit': state.exEdit=JSON.parse(JSON.stringify(store.exercises[id])); render(); break;
     case 'closeExEdit': if (el.classList.contains('picker') && e.target!==el) return; state.exEdit=null; render(); break;

@@ -250,6 +250,9 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .exrow.pickhead .ps{color:var(--ink-3)}
 .picker .filters select.lf{padding:5px 8px;font-size:12px}
 @media (max-width:560px){ .picker .results button.exrow.pick,.exrow.pick,.exrow.pickhead{grid-template-columns:minmax(0,1.3fr) 36px minmax(0,1fr)} .exrow.pick .pe,.exrow.pickhead .pe{display:none} }
+.vidwrap{position:relative;background:#000;aspect-ratio:16/9;width:100%}
+.vidwrap iframe,.vidwrap video{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vidwrap .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent-ink);border:0}
 .ddgroup{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--ink-3);padding:10px 8px 2px}
 .ddgroup:first-child{padding-top:4px}
 .ddlist input{width:auto;margin:0}
@@ -578,7 +581,7 @@ function render(){
   if (!auth.session) { m.innerHTML = loginView(); return; }
   if (auth.error && !signedIn) { m.innerHTML = `<div class="stack" style="max-width:480px;margin:40px auto"><h1>Not set up yet</h1><p style="color:var(--ink-2)">${esc(auth.error)}</p><button class="btn" data-act="signout">Use a different email</button></div>`; return; }
   if (!store.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
-  m.innerHTML = (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '');
+  m.innerHTML = (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '');
 }
 
 function loginView(){
@@ -673,6 +676,14 @@ function coachClient(){
     </div>`}
   </div>`;
 }
+function embedUrl(u){ u=String(u||'').trim(); let m;
+  if ((m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/))([A-Za-z0-9_-]{6,})/))) return 'https://www.youtube-nocookie.com/embed/'+m[1]+'?autoplay=1&playsinline=1&rel=0';
+  if ((m=u.match(/vimeo\.com\/(?:video\/)?(\d+)/))) return 'https://player.vimeo.com/video/'+m[1]+'?autoplay=1';
+  if (/\.(mp4|mov|webm)(\?|$)/i.test(u)) return u;
+  return null; }
+function videoModal(){ const v=state.video; if(!v) return ''; const src=embedUrl(v.url); const direct=/\.(mp4|mov|webm)(\?|$)/i.test(v.url);
+  return `<div class="picker" data-act="closeVideo"><div class="sheet" style="max-width:820px"><header><div class="row between"><h2>${esc(v.title||'Video')}</h2><button class="btn ghost sm" data-act="closeVideo">Close</button></div></header>
+    <div class="vidwrap">${src ? (direct ? `<video src="${esc(src)}" controls autoplay playsinline></video>` : `<iframe src="${esc(src)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`) : `<div class="empty">This link can't be shown inside the app. <a href="${esc(v.url)}" target="_blank" rel="noopener">Open it</a>.</div>`}</div></div></div>`; }
 function chartModalView(){
   const k=state.chartModal; const def=METRICS.find(x=>x[0]===k); if(!def) return ''; const [key,l,u,dec]=def;
   const c=store.clients[state.clientId]; if(!c) return ''; const t=today(); const ms=metricsFor(c.id).filter(m=>m.date>=addDays(t,-55)); const tg=c.targets||{};
@@ -966,7 +977,7 @@ function clientSession(s){
     <div class="muted small num">${doneN} of ${total} sets logged</div>
     ${runs(items).map(r=>{ const inner=r.idxs.map(i=>{ const it=items[i]; const h=exHistory(s.clientId,it,s.id); const bestBefore=h.best?e1rm(h.best.set):0; const v=(exOf(it)||{}).videoUrl; const lbl=itemLabel(items,i); return `<div class="ex">
       <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div>${lbl?`<span class="tag">${lbl}</span>`:''}<h4 style="display:inline">${esc(exName(it))}</h4>${[it.note, rxMeta(it)].filter(Boolean).length?`<div class="meta">${[it.note, rxMeta(it)].filter(Boolean).map(esc).join(' · ')}</div>`:''}
-        <div class="hist">${h.last?`Last ${h.last.cardio?esc(h.last.summary):h.last.sets.map(fmtSet).join(', ')}`:'First time'}${h.best?` · Best ${fmtSet(h.best.set)}`:''}${v?` · <a href="${esc(v)}" target="_blank" rel="noopener">Watch</a>`:''}${s.status!=='done'?` · <a href="#" data-act="swapPicker" data-i="${i}">Swap</a>`:''}</div></div><div class="rx num">${rx(it)}</div></div>
+        <div class="hist">${h.last?`Last ${h.last.cardio?esc(h.last.summary):h.last.sets.map(fmtSet).join(', ')}`:'First time'}${h.best?` · Best ${fmtSet(h.best.set)}`:''}${v?` · <a href="${esc(v)}" data-act="video" data-url="${esc(v)}" data-title="${esc(exName(it))}">Watch</a>`:''}${s.status!=='done'?` · <a href="#" data-act="swapPicker" data-i="${i}">Swap</a>`:''}</div></div><div class="rx num">${rx(it)}</div></div>
       ${isCardio(it) ? (()=>{ const d=(it.done||[])[0]||{}; const c=it.cardio||{}; const m=cmode(d.mode||c.mode); return `<div class="clog">
         <div class="field"><label>Type</label><select data-i="${i}" data-k="0" data-cf="mode">${CMODES.map(([v,l])=>`<option value="${v}" ${m===v?'selected':''}>${l}</option>`).join('')}</select></div>
         ${m==='interval' ? `<div class="field"><label>Work s</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="workSec" value="${d.workSec??c.workSec??''}"></div><div class="field"><label>Rest s</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="restSec" value="${d.restSec??c.restSec??''}"></div><div class="field"><label>Rounds</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="rounds" value="${d.rounds??c.rounds??''}"></div>`
@@ -1061,6 +1072,8 @@ document.addEventListener('click', e => {
     case 'rxCopyAbove': { const it=state.draft.items[+el.dataset.i]; ensureRx(it); const k=+el.dataset.k; it.setsRx[k]=Object.assign({},it.setsRx[k-1]); render(); break; }
     case 'rxSame': { const it=state.draft.items[+el.dataset.i]; ensureRx(it); it.setsRx=it.setsRx.map(()=>Object.assign({},it.setsRx[0])); render(); break; }
     case 'ctab': state.ctab=el.dataset.v; render(); break;
+    case 'video': { e.preventDefault(); if(!embedUrl(el.dataset.url)){ window.open(el.dataset.url,'_blank','noopener'); return; } state.video={url:el.dataset.url, title:el.dataset.title}; render(); break; }
+    case 'closeVideo': if (el.classList.contains('picker') && e.target!==el) return; state.video=null; render(); break;
     case 'sendLink': store.sendLink(state.loginEmail||$('#loginEmail').value); break;
     case 'loginAgain': auth.sent=false; auth.error=''; render(); break;
     case 'signout': store.signOut(); break;

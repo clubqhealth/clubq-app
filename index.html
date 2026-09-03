@@ -156,7 +156,8 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .day.today{border-color:var(--camel)}
 .day.over{background:var(--accent-soft);border-color:var(--ink)}
 .chip.dragging{opacity:.85;box-shadow:var(--shadow);position:relative;z-index:9}
-.chip[data-drag]{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.chip[data-drag]{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.day{-webkit-touch-callout:none}
 .chip.missed{border-color:var(--danger);color:var(--danger)}
 .chiprow{display:flex;gap:3px;align-items:stretch;position:relative}
 .chiprow .chip{flex:1;min-width:0}
@@ -573,7 +574,7 @@ function coachClient(){
     ${(state.ctab||'programme')==='progress' ? progressTab(c, done, kpis) : (state.ctab||'programme')==='profile' ? profileTab(c) : `
     <div class="card stat">
       <div><div class="v">${cp.pct===null?'–':cp.pct+'%'}</div><div class="k">Completed · 4 wks</div></div>
-      <div><div class="v">${cp.done}<span class="muted" style="font-size:14px"> / ${cp.planned}</span></div><div class="k">Sessions done</div></div>
+      <div><div class="v">${weekSessions.filter(s=>s.status==='done').length}<span class="muted" style="font-size:14px"> / ${weekSessions.length}</span></div><div class="k">Sessions done · ${wk===weekStart(t)?'this week':'week shown'}</div></div>
       <div><div class="v" ${cp.missed?'style="color:var(--danger)"':''}>${cp.missed}</div><div class="k">Missed</div></div>
     </div>
 
@@ -1018,13 +1019,19 @@ document.addEventListener('click', e => {
 });
 /* pointer-based drag of a workout chip onto another day (works with mouse and touch) */
 let drag=null, suppressClick=0;
-document.addEventListener('pointerdown', e => { const chip=e.target.closest && e.target.closest('.chip[data-drag]'); if(!chip || e.button) return; drag={id:chip.dataset.id, x:e.clientX, y:e.clientY, chip, active:false, over:null}; try{ chip.setPointerCapture(e.pointerId); }catch(x){} });
-document.addEventListener('pointermove', e => { if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; if(!drag.active){ if(Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=e.clientY; e.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const day=[...document.querySelectorAll('.day[data-date]')].find(d=>{ const r=d.getBoundingClientRect(); return e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.day.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } });
+function dragStart(chip, x, y){ drag={id:chip.dataset.id, x, y, chip, active:false, over:null}; }
+function dragMove(x, y, ev){ if(!drag) return; const dx=x-drag.x, dy=y-drag.y; if(!drag.active){ if(Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=y; if(ev && ev.cancelable) ev.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const day=[...document.querySelectorAll('.day[data-date]')].find(d=>{ const r=d.getBoundingClientRect(); return x>=r.left && x<=r.right && y>=r.top && y<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.day.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } }
+document.addEventListener('pointerdown', e => { if(e.pointerType==='touch') return; const chip=e.target.closest && e.target.closest('.chip[data-drag]'); if(!chip || e.button) return; dragStart(chip, e.clientX, e.clientY); try{ chip.setPointerCapture(e.pointerId); }catch(x){} });
+document.addEventListener('touchstart', e => { const chip=e.target.closest && e.target.closest('.chip[data-drag]'); if(!chip || e.touches.length!==1) return; const t=e.touches[0]; dragStart(chip, t.clientX, t.clientY); }, {passive:true});
+document.addEventListener('touchmove', e => { if(!drag) return; const t=e.touches[0]; dragMove(t.clientX, t.clientY, e); }, {passive:false});
+document.addEventListener('touchend', e => { if(!drag) return; if(drag.active){ e.preventDefault(); } endDrag(e); }, {passive:false});
+document.addEventListener('touchcancel', endDrag);
+document.addEventListener('pointermove', e => { if(!drag || e.pointerType==='touch') return; dragMove(e.clientX, e.clientY, e); });
 function endDrag(e){ if(!drag) return; const d=drag; drag=null; clearInterval(d.timer); d.chip.classList.remove('dragging'); d.chip.style.transform=''; document.querySelectorAll('.day.over').forEach(x=>x.classList.remove('over')); if(!d.active) return; suppressClick=Date.now(); const s=store.sessions[d.id]; if(d.over && s && s.date!==d.over.dataset.date){ if(state.mode==='client'){ s.movedFrom=s.movedFrom||s.date; s.movedByClient=true; } s.date=d.over.dataset.date; store.put('sessions',s); toast('Moved to '+fmtDate(s.date)); } else render(); }
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='loginEmail'){ e.preventDefault(); store.sendLink(e.target.value); } });
 let lastPointer=0; document.addEventListener('pointerdown', ()=>{ lastPointer=Date.now(); }, true);
 document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='INPUT' && el.getAttribute('inputmode') && el.value!=='' && Date.now()-lastPointer<600){ const sel=()=>{ try{ el.select(); }catch(x){} }; sel(); setTimeout(sel,0); } });
-document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
+document.addEventListener('pointerup', e => { if(e.pointerType==='touch') return; endDrag(e); }); document.addEventListener('pointercancel', e => { if(e.pointerType==='touch') return; endDrag(e); });
 document.addEventListener('change', e => {
   const el=e.target;
   if(el.dataset.f==='rpe' && el.tagName==='SELECT' && state.mode==='coach' && state.draft && el.dataset.k!=null){ const it=state.draft.items[+el.dataset.i]; ensureRx(it); it.setsRx[+el.dataset.k].rpe=rpeNorm(el.value); it.rpe=it.setsRx[0].rpe; return; }

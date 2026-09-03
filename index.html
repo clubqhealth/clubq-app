@@ -158,11 +158,12 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .chip.dragging{opacity:.85;box-shadow:var(--shadow);position:relative;z-index:9}
 .chip[data-drag]{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .chip.missed{border-color:var(--danger);color:var(--danger)}
-.chiprow{display:flex;gap:4px;align-items:stretch}
+.chiprow{display:flex;gap:3px;align-items:stretch;position:relative}
 .chiprow .chip{flex:1;min-width:0}
-.chipcopy{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);color:var(--ink-3);font-size:14px;padding:0 7px;display:inline-flex;align-items:center;cursor:pointer}
+.chipcopy{border:0;background:transparent;border-radius:var(--r-sm);color:var(--ink-3);font-size:13px;padding:0 5px;display:inline-flex;align-items:center;cursor:pointer;line-height:1}
+@media (hover:hover) and (min-width:900px){ .chiprow:not(.confirm) .chipcopy{position:absolute;top:1px;bottom:1px;opacity:0;transition:opacity .12s;background:var(--bg)} .chiprow:not(.confirm) .chipcopy:nth-of-type(2){right:22px} .chiprow:not(.confirm) .chipcopy:nth-of-type(3){right:2px} .chiprow:hover .chipcopy,.chiprow .chipcopy:focus-visible{opacity:1} .chiprow:not(.confirm) .chip.done ~ .chipcopy{background:var(--ink);color:var(--accent-ink)} }
 .chipcopy:hover{color:var(--ink);border-color:var(--ink-3)}
-.chipcopy.del{color:var(--accent-ink);background:var(--danger);border-color:var(--danger);font-size:12px;font-weight:600}
+.chipcopy.del{color:var(--accent-ink);background:var(--danger);font-size:12px;font-weight:600;padding:0 8px}
 .day .dh span span{display:inline-flex;gap:2px}
 .day .dh{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 .day .dh b{color:var(--ink);font-weight:600}
@@ -403,7 +404,7 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('sh
 function go(p, extra){ Object.assign(state, {page:p}, extra||{}); render(); window.scrollTo(0,0); }
 function clientSessions(cid){ return Object.values(store.sessions).filter(s=>s.clientId===cid).sort((a,b)=> (b.date||'').localeCompare(a.date||'') ); }
 function topSet(item){ const d=(item.done||[]).filter(x=>x && x.ok && (x.load||x.reps)); if(!d.length) return null; const t=d.reduce((b,x)=> (x.load>b.load || (x.load===b.load && +x.reps>+b.reps)) ? x : b, d[0]); return Object.assign({unit:unitOf(item), lu:luOf(item)}, t); }
-const RPE_OPTS=['',5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,'F'];
+const RPE_OPTS=['',5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10];
 const rpeLabel = v => v==='' || v==null ? '–' : v==='F' ? 'F' : v;
 const rpeText = v => v==null || v==='' ? '' : (v==='F' ? ' to failure' : ` @${v}`);
 const luOf = it => it.loadUnit==='lb' ? 'lb' : 'kg';
@@ -587,7 +588,7 @@ function coachClient(){
     <div class="week">
       ${days.map((d,i)=>{ const ds=weekSessions.filter(s=>s.date===d); return `<div class="day ${d===t?'today':''}" data-date="${d}">
         <div class="dh"><span><b>${DAYS[i]}</b> ${fmtShort(d)}</span><span>${clipboard?`<button data-act="paste" data-id="${c.id}" data-date="${d}" title="Paste “${esc(clipboard.title||'Session')}” here" aria-label="Paste copied workout on ${DAYS[i]}">⎘</button>`:''}<button data-act="newSession" data-id="${c.id}" data-date="${d}" aria-label="Add session on ${DAYS[i]}">+</button></span></div>
-        ${ds.map(s=>`<div class="chiprow"><button class="chip ${s.status==='done'?'done':''}" ${s.status!=='done'?'data-drag="1"':''} data-act="editSession" data-id="${s.id}" title="${s.status==='done'?'Completed':'Drag to another day'}"><span>${s.status==='done'?'✓ ':''}${esc(s.title||'Session')}</span><span class="n">${(s.items||[]).length}</span></button><button class="chipcopy" data-act="copySession" data-id="${s.id}" title="Copy this workout" aria-label="Copy ${esc(s.title||'Session')}">⎘</button>${state.confirmDelChip===s.id?`<button class="chipcopy del" data-act="deleteSessionNow" data-id="${s.id}" title="Confirm delete">Delete</button><button class="chipcopy" data-act="cancelDelChip" title="Keep">Keep</button>`:`<button class="chipcopy" data-act="askDelChip" data-id="${s.id}" title="Delete this workout" aria-label="Delete ${esc(s.title||'Session')}">✕</button>`}</div>`).join('')}
+        ${ds.map(s=>`<div class="chiprow ${state.confirmDelChip===s.id?'confirm':''}"><button class="chip ${s.status==='done'?'done':''}" ${s.status!=='done'?'data-drag="1"':''} data-act="editSession" data-id="${s.id}" title="${s.status==='done'?'Completed':'Drag to another day'}"><span>${s.status==='done'?'✓ ':''}${esc(s.title||'Session')}</span></button><button class="chipcopy" data-act="copySession" data-id="${s.id}" title="Copy this workout" aria-label="Copy ${esc(s.title||'Session')}">⎘</button>${state.confirmDelChip===s.id?`<button class="chipcopy del" data-act="deleteSessionNow" data-id="${s.id}" title="Confirm delete">Delete</button><button class="chipcopy" data-act="cancelDelChip" title="Keep">Keep</button>`:`<button class="chipcopy" data-act="askDelChip" data-id="${s.id}" title="Delete this workout" aria-label="Delete ${esc(s.title||'Session')}">✕</button>`}</div>`).join('')}
       </div>`; }).join('')}
     </div>
 
@@ -819,7 +820,7 @@ function clientView(){
     </div>
     ${(()=>{ const cw=state.cweek||weekStart(t); const days=Array.from({length:7},(_,i)=>addDays(cw,i)); const wkS=ss.filter(x=>x.date>=cw && x.date<=days[6]).sort((a,b)=>a.date.localeCompare(b.date)); const st=x=>x.status==='done'?'done':(x.date<t?'missed':'planned');
       return `<div class="row between"><h3>${cw===weekStart(t)?'This week':'Week of '+fmtShort(cw)}</h3><span class="row" style="gap:4px"><button class="btn ghost sm" data-act="cweek" data-v="-1" aria-label="Previous week">‹</button>${cw!==weekStart(t)?`<button class="btn ghost sm" data-act="cweekToday">Today</button>`:''}<button class="btn ghost sm" data-act="cweek" data-v="1" aria-label="Next week">›</button></span></div>
-      <div class="week">${days.map((d,i)=>{ const ds=ss.filter(x=>x.date===d); return `<div class="day ${d===t?'today':''}" data-date="${d}"><div class="dh"><span><b>${DAYS[i]}</b> ${fmtShort(d)}</span></div>${ds.length?ds.map(x=>`<button class="chip ${st(x)==='done'?'done':''} ${st(x)==='missed'?'missed':''}" data-act="openSession" data-id="${x.id}" ${st(x)!=='done'?'data-drag="1"':''}><span>${st(x)==='done'?'✓ ':''}${esc(x.title||'Session')}</span><span class="n">${(x.items||[]).length}</span></button>`).join(''):'<span class="muted small">Rest</span>'}</div>`; }).join('')}</div>
+      <div class="week">${days.map((d,i)=>{ const ds=ss.filter(x=>x.date===d); return `<div class="day ${d===t?'today':''}" data-date="${d}"><div class="dh"><span><b>${DAYS[i]}</b> ${fmtShort(d)}</span></div>${ds.length?ds.map(x=>`<button class="chip ${st(x)==='done'?'done':''} ${st(x)==='missed'?'missed':''}" data-act="openSession" data-id="${x.id}" ${st(x)!=='done'?'data-drag="1"':''}><span>${st(x)==='done'?'✓ ':''}${esc(x.title||'Session')}</span></button>`).join(''):'<span class="muted small">Rest</span>'}</div>`; }).join('')}</div>
       `; })()}
     ${ms.length>1 ? `<h3>Bodyweight · 8 weeks</h3><div class="card chart">${lineChart(ms.map(x=>({date:x.date,v:x.weight})),{id:'cw',unit:'kg',dec:1,label:'Bodyweight'})}</div>`:''}
     ${metricsFor(me.id).length ? `<h3>Your weeks</h3>${weeklyTable(me.id, tg, 6)}`:''}
@@ -860,7 +861,7 @@ function clientSession(s){
         : `<div class="field"><label>Minutes</label><input type="text" inputmode="numeric" data-i="${i}" data-k="0" data-cf="minutes" value="${d.minutes??c.minutes??''}"></div>`}
         <div class="field"><label>RPE</label><select class="rpe" data-i="${i}" data-k="0" data-f="rpe" aria-label="RPE">${RPE_OPTS.map(v=>`<option value="${v}" ${String(d.rpe ?? it.rpe ?? '')===String(v)?'selected':''}>${rpeLabel(v)}</option>`).join('')}</select></div>
         <div class="field"><label>Done</label><button class="tick" data-act="tick" data-i="${i}" data-k="0" aria-pressed="${!!d.ok}" aria-label="Done">✓</button></div>
-      </div>`; })() : `<div class="sets"><span class="h">Set</span><span class="h">${UNITS.find(x=>x[0]===unitOf(it))[1]}</span><span class="h">${luOf(it)}</span><span class="h">RPE</span><span class="h">Done</span><span class="h"></span>
+      </div>${it.addedByClient && s.status!=='done' ? `<div class="row" style="margin-top:8px;justify-content:flex-end">${state.confirmRm===i?`<button class="btn sm" data-act="rmCancel">Keep</button><button class="btn sm danger" data-act="rmClientItem" data-i="${i}">Remove</button>`:`<button class="btn ghost sm" data-act="rmAsk" data-i="${i}">Remove exercise</button>`}</div>`:''}`; })() : `<div class="sets"><span class="h">Set</span><span class="h">${UNITS.find(x=>x[0]===unitOf(it))[1]}</span><span class="h">${luOf(it)}</span><span class="h">RPE</span><span class="h">Done</span><span class="h"></span>
         ${Array.from({length:it.sets||0},(_,k)=>{ const d=(it.done||[])[k]||{}; const pb = d.ok && bestBefore>0 && e1rm({reps:d.reps??rxOf(it,k).reps,load:d.load??rxOf(it,k).load,lu:luOf(it)})>bestBefore; const open = state.openNotes[i+'-'+k] || d.note; return `<span class="n num">${k+1}${pb?'<span class="pb">PB</span>':''}</span>
           <input type="text" inputmode="numeric" data-i="${i}" data-k="${k}" data-f="reps" value="${d.reps ?? repsDefaultOf(rxOf(it,k)) ?? ''}" placeholder="${esc(rxOf(it,k).reps)}" aria-label="Set ${k+1} reps">
           <input type="text" inputmode="decimal" data-i="${i}" data-k="${k}" data-f="load" value="${d.load ?? rxOf(it,k).load ?? ''}" placeholder="${luOf(it)}" aria-label="Set ${k+1} load">
@@ -869,7 +870,7 @@ function clientSession(s){
           <button class="notebtn" data-act="noteToggle" data-i="${i}" data-k="${k}" aria-pressed="${!!open}" aria-label="Note on set ${k+1}">✎</button>
           ${open?`<div class="noterow"><input data-i="${i}" data-k="${k}" data-f="note" value="${esc(d.note||'')}" placeholder="Note on this set"></div>`:''}`; }).join('')}
       </div>
-      ${it.addedByClient && s.status!=='done' ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-act="setCount" data-i="${i}" data-v="1">+ Set</button><button class="btn ghost sm" data-act="setCount" data-i="${i}" data-v="-1" ${it.sets<=1?'disabled':''}>– Set</button></div>`:''}`}
+      ${it.addedByClient && s.status!=='done' ? `<div class="row between" style="margin-top:8px"><span class="row"><button class="btn sm" data-act="setCount" data-i="${i}" data-v="1">+ Set</button><button class="btn ghost sm" data-act="setCount" data-i="${i}" data-v="-1" ${it.sets<=1?'disabled':''}>– Set</button></span>${state.confirmRm===i?`<span class="row"><button class="btn sm" data-act="rmCancel">Keep</button><button class="btn sm danger" data-act="rmClientItem" data-i="${i}">Remove</button></span>`:`<button class="btn ghost sm" data-act="rmAsk" data-i="${i}">Remove exercise</button>`}</div>`:''}`}
     </div>`; }).join(''); return r.idxs.length>1 ? `<div class="ss"><div class="ssh">Superset ${r.letter} · alternate ${r.idxs.map(i=>itemLabel(items,i)).join(' and ')}</div>${inner}</div>` : inner; }).join('')}
     ${s.status!=='done'?`<button class="btn" data-act="clientAddPicker" style="align-self:flex-start">+ Add an exercise you did today</button>`:''}
     <div class="card stack">
@@ -958,6 +959,9 @@ document.addEventListener('click', e => {
     case 'habitTick': { const m=mdoc(state.clientSelf, el.dataset.date); m.habits=Object.assign({},m.habits||{}); m.habits[id]=!m.habits[id]; store.put('metrics',m); break; }
     case 'openIntake': state.intakeDraft=null; go('intake'); break;
     case 'submitIntake': { const me=store.clients[state.clientSelf]; const a=state.intakeDraft||(me.intake?me.intake.answers:{}); if(!Object.values(a).some(v=>v&&v.trim())){ toast('Answer at least one question'); return; } me.intake={answers:a, completedAt:me.intake?me.intake.completedAt:today(), updatedAt:today()}; state.intakeDraft=null; store.put('clients',me); toast('Sent to your coach'); go('today'); break; }
+    case 'rmAsk': state.confirmRm=+el.dataset.i; render(); break;
+    case 'rmCancel': state.confirmRm=null; render(); break;
+    case 'rmClientItem': { const s=store.sessions[state.sessionId]; const i=+el.dataset.i; if(!s.items[i]||!s.items[i].addedByClient) return; s.items.splice(i,1); normaliseGroups(s.items); state.confirmRm=null; store.put('sessions',s); toast('Removed'); break; }
     case 'setCount': { const s=store.sessions[state.sessionId]; const it=s.items[+el.dataset.i]; it.sets=Math.max(1,(+it.sets||1)+(+el.dataset.v)); it.done=(it.done||[]).slice(0,it.sets); store.put('sessions',s); break; }
     /* client */
     case 'pickSelf': state.clientSelf=id; try{localStorage.setItem('clubq-self',id);}catch(x){} go('today'); break;

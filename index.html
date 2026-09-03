@@ -86,6 +86,7 @@ label{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:
 .kpi{display:grid;grid-template-columns:1fr auto auto auto;gap:6px 12px;align-items:baseline;font-size:14px}
 .kpi .h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
 .kpi .up{color:var(--camel)} .kpi .down{color:var(--danger)}
+.kpihist{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:6px 10px 8px;border-left:2px solid var(--line);margin:0 0 4px}
 /* exercise block in session */
 .ex{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
 .ex h4{margin:0 0 2px;font-size:16px;font-weight:600;font-family:var(--body);color:var(--ink)}
@@ -627,9 +628,7 @@ function coachClient(){
   const c = store.clients[state.clientId]; if(!c) { state.page='clients'; return coachClients(); }
   const ss = clientSessions(c.id); const t=today();
   const done = ss.filter(s=>s.status==='done');
-  const byEx = {};
-  done.slice().reverse().forEach(s => (s.items||[]).forEach(it => { const ts = topSet(it); if(!ts) return; const key=exName(it); (byEx[key] = byEx[key]||[]).push({date:s.date, set:ts}); }));
-  const kpis = Object.entries(byEx).map(([name,arr])=>{ const best = arr.reduce((b,x)=> e1rm(x.set)>e1rm(b.set)?x:b, arr[0]); const last=arr[arr.length-1], prev=arr[arr.length-2]; const delta = prev ? e1rm(last.set)-e1rm(prev.set) : 0; return {name,best,last,delta}; }).sort((a,b)=>e1rm(b.best.set)-e1rm(a.best.set));
+  const kpis = kpisOf(c);
   const cp = compliance(c.id);
   const wk = state.weekOf; const days = Array.from({length:7},(_,i)=>addDays(wk,i));
   const weekSessions = ss.filter(s=>s.date>=wk && s.date<=days[6]);
@@ -695,6 +694,58 @@ function chartModalView(){
       <table class="tbl" style="min-width:0;margin-top:12px"><thead><tr><th>Week of</th><th>Logged</th><th>Avg ${l.toLowerCase()}</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${fmtShort(w.ws)}</td><td class="num">${w.logged}/7</td><td class="num">${fmtNum(w[key],dec)}</td></tr>`).join('')}</tbody></table>
     </div></div></div>`;
 }
+/* ---------------- strength KPIs (coach-defined) ---------------- */
+const KPI_WINDOWS=[[4,'4 wk'],[6,'6 wk'],[12,'12 wk'],[0,'All']];
+function kpisOf(c){ return ((c.targets||{}).kpis)||[]; }
+function saveKpis(c, arr){ c.targets=Object.assign({},c.targets||{},{kpis:arr}); store.put('clients',c); }
+function kpiMetrics(ex){ if(ex && exIsCardio(ex)) return [['time','Fastest time (set distance)'],['dist','Longest distance (set time)'],['mins','Longest steady effort']]; return [['e1rm','Estimated 1RM'],['load','Heaviest load at N reps'],['most','Most reps / longest hold in a set']]; }
+function kpiMetricLabel(k){ return ({e1rm:'Est. 1RM', load:`Heaviest at ${k.reps||5}+ reps`, most:'Most in a set', time:'Fastest time', dist:'Longest distance', mins:'Longest effort'})[k.metric]||k.metric; }
+function parseTime(t){ if(t==null||t==='') return null; const p=String(t).trim().split(':').map(Number); if(p.some(isNaN)) return null; return p.length===1?p[0]:p.length===2?p[0]*60+p[1]:p[0]*3600+p[1]*60+p[2]; }
+function fmtTime(sec){ if(sec==null) return '–'; const m=Math.floor(sec/60), r=Math.round(sec%60); return `${m}:${String(r).padStart(2,'0')}`; }
+function kpiLowerBetter(k){ return k.metric==='time'; }
+/* value of one session for this KPI, or null */
+function kpiSessionValue(k, it){
+  const okSets=(it.done||[]).filter(x=>x&&x.ok); if(!okSets.length) return null;
+  if(k.metric==='time'){ const d=okSets[0]; if(cmode(d.mode||(it.cardio||{}).mode)!=='distance') return null; const t=parseTime(d.time); return t?{v:t, label:fmtTime(t)+' for '+(d.distance||(it.cardio||{}).distance||'')}:null; }
+  if(k.metric==='dist'){ const d=okSets[0]; if(cmode(d.mode||(it.cardio||{}).mode)!=='time') return null; const n=parseFloat(String(d.distance||'').replace(/,/g,'')); return n?{v:n, label:String(d.distance)+' in '+(d.minutes||(it.cardio||{}).minutes||'–')+' min'}:null; }
+  if(k.metric==='mins'){ const d=okSets[0]; const n=+d.minutes||0; return n?{v:n, label:n+' min'}:null; }
+  const lu=luOf(it), u=unitOf(it);
+  if(k.metric==='e1rm'){ let best=null; okSets.forEach(x=>{ if(!x.load) return; const e=e1rm({load:x.load, lu, reps:x.reps, unit:'reps'}); if(!best||e>best.v) best={v:e, label:Math.round(e)+'kg · '+fmtSet({load:x.load,lu,reps:x.reps})}; }); return best; }
+  if(k.metric==='load'){ const n=+k.reps||5; let best=null; okSets.forEach(x=>{ if(!x.load || +x.reps<n) return; const kg=kgOf(x.load,lu); if(!best||kg>best.v) best={v:kg, label:fmtSet({load:x.load,lu,reps:x.reps})}; }); return best; }
+  if(k.metric==='most'){ let best=null; okSets.forEach(x=>{ const r=+x.reps||0; if(!r) return; if(!best||r>best.v) best={v:r, label:r+(u==='sec'?'s':u==='m'?'m':' reps')+(x.load?' @ '+fmtLoad(x.load,lu):'')}; }); return best; }
+  return null;
+}
+function kpiSeries(k, done){ const probe={exerciseId:k.exerciseId, name:k.name}; const rows=[]; done.forEach(s=>{ let best=null; (s.items||[]).forEach(it=>{ if(!sameEx(it,probe)) return; const v=kpiSessionValue(k,it); if(v && (!best || (kpiLowerBetter(k)?v.v<best.v:v.v>best.v))) best=v; }); if(best) rows.push(Object.assign({date:s.date},best)); }); return rows.sort((a,b)=>a.date.localeCompare(b.date)); }
+function kpiBest(k, rows){ if(!rows.length) return null; return rows.reduce((b,x)=> !b || (kpiLowerBetter(k)?x.v<b.v:x.v>b.v) ? x : b, null); }
+function kpiFmt(k, v){ if(v==null) return '–'; if(k.metric==='time') return fmtTime(v); if(k.metric==='e1rm'||k.metric==='load') return Math.round(v*10)/10+'kg'; if(k.metric==='mins') return v+' min'; return String(Math.round(v*10)/10); }
+function kpiCompare(k, done, weeks){
+  const rows=kpiSeries(k, done); const t=today();
+  let cur, prev;
+  if(!weeks){ cur=kpiBest(k, rows); prev=rows[0] && rows.length>1 ? rows[0] : null; }
+  else { const a=addDays(t,-7*weeks), b=addDays(t,-14*weeks); cur=kpiBest(k, rows.filter(r=>r.date>a)); prev=kpiBest(k, rows.filter(r=>r.date>b && r.date<=a)); }
+  const last=rows[rows.length-1]||null;
+  let delta=null, pct=null; if(cur && prev){ delta=kpiLowerBetter(k) ? prev.v-cur.v : cur.v-prev.v; pct= prev.v ? Math.round(delta/prev.v*1000)/10 : null; }
+  return {rows, cur, prev, last, delta, pct, best:kpiBest(k, rows)};
+}
+function kpiCard(c, kpis, done){
+  const w = state.kpiWin==null ? 6 : state.kpiWin; const editing=!!state.kpiEdit;
+  const chips = `<span class="row" style="gap:4px">${KPI_WINDOWS.map(([v,l])=>`<button class="hab" data-act="kpiWin" data-v="${v}" aria-pressed="${w===v}">${l}</button>`).join('')}</span>`;
+  const head = `<div class="row between" style="margin-bottom:8px"><span class="row">${chips}</span><button class="btn ghost sm" data-act="kpiEdit">${editing?'Done':kpis.length?'Edit KPIs':'Set KPIs'}</button></div>`;
+  let body='';
+  if(editing){
+    body = `<div class="stack" style="gap:8px">${kpis.map((k,i)=>{ const ex=k.exerciseId?store.exercises[k.exerciseId]:exByName(k.name); return `<div class="row between" style="flex-wrap:nowrap;gap:8px"><b style="flex:1;min-width:0">${esc(k.name)}</b><select data-f="kpiMetric" data-i="${i}" style="width:auto;padding:6px 8px">${kpiMetrics(ex).map(([v,l])=>`<option value="${v}" ${k.metric===v?'selected':''}>${l}</option>`).join('')}</select>${k.metric==='load'?`<input type="text" inputmode="numeric" data-f="kpiReps" data-i="${i}" value="${k.reps||5}" style="width:52px" aria-label="Rep target">`:''}<button class="btn ghost sm" data-act="kpiRemove" data-i="${i}" aria-label="Remove">✕</button></div>`; }).join('')}
+      <div class="row between"><button class="btn sm" data-act="kpiAdd">+ Add exercise</button><span class="muted small">Three to six is plenty.</span></div></div>`;
+  } else if(!kpis.length){
+    body = `<div class="muted small">No KPIs set. Pick the handful of lifts that define progress for ${esc(c.name.split(' ')[0])}, and choose how each is measured.</div>`;
+  } else {
+    const rows = kpis.map(k=>{ const r=kpiCompare(k, done, w); const dir = r.delta==null?'':r.delta>0?'up':r.delta<0?'down':''; const dtxt = r.delta==null?'–':`${r.delta>0?'+':r.delta<0?'−':''}${kpiFmt(k,Math.abs(r.delta))}${r.pct!=null?` <span class="muted">(${r.pct>0?'+':''}${r.pct}%)</span>`:''}`;
+      const open=state.kpiOpen===k.id; const hist = open ? `<div class="kpihist small">${r.rows.length?r.rows.slice(-12).reverse().map(x=>`<span class="muted">${fmtShort(x.date)}</span><span class="num">${esc(x.label)}</span>`).join(''):'<span class="muted">Nothing logged for this exercise yet.</span>'}</div>` : '';
+      return `<span data-act="kpiOpen" data-id="${k.id}" style="cursor:pointer"><b>${esc(k.name)}</b> <span class="muted">${open?'▴':'▾'}</span><div class="muted small">${esc(kpiMetricLabel(k))}${r.last?` · last ${esc(r.last.label)} (${fmtShort(r.last.date)})`:' · not logged yet'}</div></span><span class="num" title="${r.cur?esc(r.cur.label)+' on '+fmtDate(r.cur.date):''}">${r.cur?kpiFmt(k,r.cur.v):'–'}</span><span class="num muted" title="${r.prev?esc(r.prev.label)+' on '+fmtDate(r.prev.date):''}">${r.prev?kpiFmt(k,r.prev.v):'–'}</span><span class="num ${dir}">${dtxt}</span>${hist}`; }).join('');
+    body = `<div class="kpi"><span class="h">Exercise</span><span class="h">${w?'Best · '+w+' wk':'Best ever'}</span><span class="h">${w?'Previous '+w+' wk':'First logged'}</span><span class="h">Change</span>${rows}</div>
+      <p class="muted small" style="margin:10px 0 0">${w?`Best result in the last ${w} weeks against the best in the ${w} weeks before that.`:'All time best against the first logged result.'} Tap an exercise for its history.</p>`;
+  }
+  return `<h3>Strength KPIs</h3><div class="card">${head}${body}</div>`;
+}
 function progressTab(c, done, kpis){
   const t=today(); const ms=metricsFor(c.id).filter(m=>m.date>=addDays(t,-55)); const tg=c.targets||{}; c.__ms=ms;
   const lastRating = done.find(s=>s.rating);
@@ -708,12 +759,7 @@ function progressTab(c, done, kpis){
     </tbody></table></div>
     <div class="cols">
       <div class="stack">
-        ${kpis.length ? `<h3>Strength KPIs</h3>
-        <div class="card">
-          ${kpis.length ? `<div class="kpi"><span class="h">Exercise</span><span class="h">Best</span><span class="h">Last</span><span class="h">Δ</span>
-          ${kpis.map(k=>`<span>${esc(k.name)}</span><span class="num">${fmtSet(k.best.set)}</span><span class="num">${fmtSet(k.last.set)}</span><span class="num ${k.delta>0?'up':k.delta<0?'down':''}">${k.delta>0?'▲':k.delta<0?'▼':'–'}</span>`).join('')}</div>
-          <p class="muted small" style="margin:10px 0 0">Best and last are the top logged set. Δ compares estimated 1RM of the last two sessions.</p>` : ''}
-        </div>` : ''}
+        ${kpiCard(c, kpis, done)}
         ${(()=>{ const byC={}; done.forEach(s=>(s.items||[]).forEach(it=>{ if(isCardio(it)){ const d=(it.done||[])[0]; if(d&&d.ok) (byC[it.name]=byC[it.name]||[]).push({date:s.date, log:cardioLog(d, it.cardio)}); } })); const names=Object.keys(byC); return names.length ? `<h3>Cardio</h3><div class="card"><div class="kpi" style="grid-template-columns:1fr auto auto"><span class="h">Exercise</span><span class="h">Last</span><span class="h">Previous</span>${names.map(n=>{ const a=byC[n]; return `<span>${esc(n)}</span><span class="num small">${esc(a[0].log)}<br><span class="muted">${fmtShort(a[0].date)}</span></span><span class="num small">${a[1]?esc(a[1].log)+'<br><span class="muted">'+fmtShort(a[1].date)+'</span>':'<span class="muted">–</span>'}</span>`; }).join('')}</div></div>` : ''; })()}
         ${lastRating ? `<div class="muted small">Last session rating: <b class="num">${lastRating.rating}/10</b>${lastRating.clientNote?` · “${esc(lastRating.clientNote)}”`:''}</div>`:''}
         ${habits.length ? `<h3>Habits · last 7 days</h3>
@@ -861,6 +907,7 @@ function pickerResults(){
 }
 function pickerView(){
   const cat=state.picker.cat||''; const pk=state.picker; let title='Add exercise', hint='';
+  if (pk.target==='kpi'){ title='Add a KPI exercise'; hint='Pick a lift you want to track for this client.'; }
   if (pk.target==='swap'){ title='Swap '+pk.swapName; const cur=pk.swapId ? store.exercises[pk.swapId] : exByName(pk.swapName); hint = cur ? `Same pattern (${primaryCat(cur).sub||primaryCat(cur).cat}), closest difficulty first. Search for anything else.` : 'Search the library for a replacement.'; }
   return `<div class="picker" data-act="closePicker">
     <div class="sheet">
@@ -1060,6 +1107,11 @@ document.addEventListener('click', e => {
     case 'removeItem': state.draft.items.splice(+el.dataset.i,1); normaliseGroups(state.draft.items); render(); break;
     case 'superset': { const a=state.draft.items, i=+el.dataset.i; if(pairedWithPrev(a,i)){ a[i].group='_'; } else { a[i].group=a[i-1].group; } normaliseGroups(a); render(); break; }
     case 'moveItem': { const i=+el.dataset.i, j=i+(+el.dataset.v); const a=state.draft.items; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; a[i].group='_'; a[j].group='#'; normaliseGroups(a); render(); break; }
+    case 'kpiWin': state.kpiWin=+el.dataset.v; render(); break;
+    case 'kpiOpen': state.kpiOpen = state.kpiOpen===el.dataset.id ? null : el.dataset.id; render(); break;
+    case 'kpiEdit': state.kpiEdit=!state.kpiEdit; render(); break;
+    case 'kpiAdd': state.picker={q:'',cat:'',target:'kpi'}; render(); setTimeout(()=>{ const q=$('#pickQ'); if(q) q.focus(); },30); break;
+    case 'kpiRemove': { const c=store.clients[state.clientId]; const arr=kpisOf(c).slice(); arr.splice(+el.dataset.i,1); saveKpis(c,arr); break; }
     case 'openPicker': state.picker={q:'',cat:'',f:state.pickF||{}}; render(); setTimeout(()=>{ const q=$('#pickQ'); if(q) q.focus(); },30); break;
     case 'closePicker': if (el.classList.contains('picker') && e.target!==el) return; state.picker=null; render(); break;
     case 'pickClear': state.picker.f={}; state.pickF={}; render(); setTimeout(()=>{ const q=$('#pickQ'); if(q) q.focus(); },30); break;
@@ -1068,6 +1120,7 @@ document.addEventListener('click', e => {
     case 'clientAddPicker': state.picker={q:'',cat:'',target:'clientAdd'}; render(); setTimeout(()=>{ const q=$('#pickQ'); if(q) q.focus(); },30); break;
     case 'pick': { const name=el.dataset.name;
       if (state.picker.target==='swap'){ const s=store.sessions[state.sessionId]; const it=s.items[state.picker.swapIndex]; if(!it.swappedFrom) it.swappedFrom=exName(it); const ni=newItem(name,null,false,el.dataset.id); it.name=ni.name; it.exerciseId=ni.exerciseId; if(!ni.exerciseId) delete it.exerciseId; it.load=null; it.done=[]; it.unit=ni.unit; if(ni.kind==='cardio'){ it.kind='cardio'; it.cardio=ni.cardio; it.sets=1; } else if(isCardio(it)){ delete it.kind; delete it.cardio; it.sets=3; it.reps=it.reps||'10'; } state.picker=null; store.put('sessions',s); toast('Swapped to '+name+'. Your coach will see this.'); break; }
+      if (state.picker.target==='kpi'){ const c=store.clients[state.clientId]; const ex=el.dataset.id?store.exercises[el.dataset.id]:exByName(name); const arr=kpisOf(c).slice(); if(arr.some(k=>(ex&&k.exerciseId===ex.id)||k.name.toLowerCase()===name.toLowerCase())){ toast('Already a KPI'); state.picker=null; render(); break; } arr.push({id:uid('k'), exerciseId:ex?ex.id:undefined, name:ex?ex.name:name, metric: ex&&exIsCardio(ex)?'time':'e1rm', reps:5}); state.picker=null; state.kpiEdit=true; saveKpis(c,arr); break; }
       if (state.picker.target==='clientAdd'){ const s=store.sessions[state.sessionId]; s.items.push(newItem(name,null,true,el.dataset.id)); normaliseGroups(s.items); state.picker=null; store.put('sessions',s); toast('Added '+name); break; }
       const prev = state.draft.items[state.draft.items.length-1]; let xid=el.dataset.id; if(!xid && auth.coach && (auth.coach.role==='admin') && !exByName(name)){ const nx={id:uid('x'), name:name.trim(), cats:[], skill:1, equipment:['None'], muscles:[], plane:'', at_clubq:true, mode:'', videoUrl:'', notes:'', archived:false}; store.put('exercises',nx); xid=nx.id; toast('Added to the library under Unsorted'); } state.draft.items.push(newItem(name,prev,false,xid)); normaliseGroups(state.draft.items); state.picker=null; render(); toast('Added '+name); break; }
     case 'rxSets': { const it=state.draft.items[+el.dataset.i]; ensureRx(it); const v=+el.dataset.v; if(v>0){ it.setsRx.push(Object.assign({},it.setsRx[it.setsRx.length-1])); } else if(it.setsRx.length>1) it.setsRx.pop(); it.sets=it.setsRx.length; render(); break; }
@@ -1133,6 +1186,7 @@ document.addEventListener('input', e => {
   if (f==='intake'){ const me=store.clients[state.clientSelf]; state.intakeDraft=state.intakeDraft||Object.assign({}, me&&me.intake?me.intake.answers:{}); state.intakeDraft[el.dataset.k]=el.value; return; }
   if (f==='metric'){ const cid=state.clientSelf, date=el.dataset.date, k=el.dataset.k, v= k==='notes' ? el.value : (el.value===''?null:+el.value); if(k!=='notes') el.classList.toggle('filled', el.value!==''); clearTimeout(metricTimer); metricTimer=setTimeout(()=>{ const m=mdoc(cid,date); m[k]=v; store.put('metrics',m); },500); return; }
   if (f==='cintake'){ const k=el.dataset.k, v=el.value; clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const c=store.clients[state.clientId]; if(!c) return; c.intake=c.intake||{answers:{}, completedAt:today()}; c.intake.answers=Object.assign({},c.intake.answers||{}); c.intake.answers[k]=v; c.intake.updatedAt=today(); c.intake.filledBy='coach'; store.put('clients',c); },600); return; }
+  if (f==='kpiReps'){ clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const c=store.clients[state.clientId]; if(!c) return; const arr=kpisOf(c).map(k=>Object.assign({},k)); const k=arr[+el.dataset.i]; if(k){ k.reps=Math.max(1,+el.value||5); saveKpis(c,arr); } },500); return; }
   if (f==='clientGoal' || f==='clientEmail' || f==='target'){ clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const c=store.clients[state.clientId]; if(!c) return; if(f==='clientGoal') c.goal=el.value.trim(); else if(f==='clientEmail') c.email=el.value.trim().toLowerCase(); else { c.targets=Object.assign({},c.targets||{}); c.targets[el.dataset.k]=el.value===''?null:+el.value; } store.put('clients',c); },500); return; }
   if (f==='pickQ'){ state.picker.q=el.value; const r=$('#pickResults'); if(r) r.innerHTML=pickerResults(); return; }
   if (state.mode==='coach' && state.draft){
@@ -1188,6 +1242,7 @@ document.addEventListener('change', e => {
   if(el.dataset.f==='rpe' && el.tagName==='SELECT' && state.mode==='coach' && state.draft && el.dataset.k!=null){ const it=state.draft.items[+el.dataset.i]; ensureRx(it); it.setsRx[+el.dataset.k].rpe=rpeNorm(el.value); it.rpe=it.setsRx[0].rpe; return; }
   if(el.dataset.f==='loadUnit' && state.draft){ const it=state.draft.items[+el.dataset.i]; it.loadUnit=el.value; render(); return; }
   if(el.dataset.f==='rest' && el.tagName==='SELECT' && state.draft){ const it=state.draft.items[+el.dataset.i]; it.rest=el.value===''?null:+el.value; return; }
+  if(el.dataset.f==='kpiMetric' && el.tagName==='SELECT'){ const c=store.clients[state.clientId]; if(!c) return; const arr=kpisOf(c).map(k=>Object.assign({},k)); arr[+el.dataset.i].metric=el.value; saveKpis(c,arr); return; }
   if(el.dataset.f==='warmup' && el.tagName==='SELECT' && state.draft){ const it=state.draft.items[+el.dataset.i]; it.warmup=+el.value||0; return; }
   if(el.dataset.f==='unit' && state.draft){ const it=state.draft.items[+el.dataset.i]; it.unit=el.value; render(); return; }
   if(el.dataset.cf==='mode'){ if(state.mode==='coach' && state.draft){ const it=state.draft.items[+el.dataset.i]; it.cardio=it.cardio||{}; it.cardio.mode=el.value; render(); } else if(state.mode==='client' && state.sessionId){ const s=store.sessions[state.sessionId]; const it=s.items[+el.dataset.i]; it.done=it.done||[]; const d=it.done[0]||{ok:false}; d.mode=el.value; it.done[0]=d; store.put('sessions',s); } return; }

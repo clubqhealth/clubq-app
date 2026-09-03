@@ -162,8 +162,7 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .hist .hs.best{border-color:var(--camel);color:var(--camel)}
 .hist .hlinks{margin-left:6px;font-size:13px}
 .hist .hg{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
-.restline{margin-top:6px}
-.restpill{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--espresso);background:var(--surface-2,#F1EEE9);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.restline{margin-top:4px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .hist .hs+.hg{margin-left:6px}
 .rx .wu{display:inline-block;color:var(--ink-3);font-weight:500} .rx .wm{display:inline-block;white-space:nowrap}
 .hist a{color:var(--ink-2);font-weight:500}
@@ -543,7 +542,7 @@ function fmtRest(r){ r=+r; if(!r) return ''; return r%60===0 ? (r/60)+' min' : r
 function rxMeta(it){ const p=[]; if(it.rpe) p.push(it.rpe==='F'?'To failure':'RPE '+it.rpe); if(it.rest) p.push('Rest '+fmtRest(it.rest)); return p.join(' · '); }
 function rpeMeta(it){ return it.rpe ? (it.rpe==='F'?'To failure':'RPE '+it.rpe) : ''; }
 function noteHTML(n){ return esc(n||'').replace(/\n/g,'<br>'); }
-function restLine(it){ return it.rest ? `<div class="restline"><span class="restpill">Rest ${fmtRest(it.rest)} between sets</span></div>` : ''; }
+function restLine(it){ return it.rest ? `<div class="restline">Rest ${fmtRest(it.rest)} between sets</div>` : ''; }
 const METRICS=[['weight','Bodyweight','kg',1],['calories','Calories','kcal',0],['protein','Protein','g',0],['steps','Steps','',0]];
 function mid(cid,date){ return cid+'__'+date; }
 function metricsFor(cid){ return Object.values(store.metrics).filter(m=>m.clientId===cid).sort((a,b)=>a.date.localeCompare(b.date)); }

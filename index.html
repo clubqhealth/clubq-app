@@ -229,6 +229,22 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .exrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;padding:9px 8px;border-radius:var(--r-sm);color:var(--ink);font-size:15px}
 .exrow>span:first-child:not(.grip),.exrow .exname{flex:1;min-width:0}
 .exrow .grip{flex:none}
+.exrow.edit{gap:8px;padding:6px 8px;flex-wrap:wrap}
+.exrow .exi{padding:6px 8px;font-size:14px;width:auto}
+.exrow .exi.name{flex:1;min-width:180px;font-weight:500;color:var(--ink)}
+.exrow .exi.vid{width:150px;font-size:12px;color:var(--ink-2)}
+.exrow select.exi{width:auto}
+.exrow .exflags{display:inline-flex;gap:4px;justify-content:flex-end;min-width:72px}
+.dd{position:relative}
+.dd summary{list-style:none;display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 10px;background:var(--surface);cursor:pointer;color:var(--ink)}
+.dd summary::-webkit-details-marker{display:none}
+.dd summary i{color:var(--ink-3);font-style:normal}
+.dd[open] summary{border-color:var(--ink-3)}
+.ddlist{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:6px}
+.ddlist label{display:flex;gap:8px;align-items:center;padding:6px 8px;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:400;margin:0;border-radius:4px}
+.ddlist label:hover{background:var(--surface-2)}
+.ddlist input{width:auto;margin:0}
+@media (max-width:560px){ .exrow .exi.vid{width:100%} }
 .exrow .exname{border:0;background:transparent;text-align:left;color:var(--ink);font-size:15px;padding:0;font-weight:500}
 .exrow .exname:hover{color:var(--camel)}
 button.exrow:hover{background:var(--surface-2)}
@@ -806,7 +822,13 @@ function groupedHTML(list, opts){ // opts: {act, cat (filter), edit}
 function exRow(e, opts, bl){
   const info=`<span class="muted small num">S${e.skill}${(e.equipment||[]).filter(x=>x!=='None').length?' · '+esc((e.equipment||[]).filter(x=>x!=='None').join(', ')):''}${e.at_clubq===false?' · <i class="na">not at ClubQ</i>':''}</span>`;
   if (opts.act) return `<button class="exrow" data-act="${opts.act}" data-id="${e.id}" data-name="${esc(e.name)}"><span>${esc(e.name)}${e.videoUrl?' <span class="muted small">▶</span>':''}</span>${info}</button>`;
-  if (opts.edit) return `<div class="exrow edit" data-dragex="${e.id}" data-from-cat="${esc(bl.cat)}" data-from-sub="${esc(bl.sub||'')}"><span class="grip">⋮⋮</span><button class="exname" data-act="exEdit" data-id="${e.id}">${esc(e.name)}</button>${info}${(e.cats||[]).length>1?`<span class="pill" title="${esc(e.cats.map(c=>c.cat+(c.sub?' / '+c.sub:'')).join(', '))}">${e.cats.length} categories</span>`:''}</div>`;
+  if (opts.edit) return `<div class="exrow edit" data-dragex="${e.id}" data-from-cat="${esc(bl.cat)}" data-from-sub="${esc(bl.sub||'')}"><span class="grip" title="Drag to another subcategory">⋮⋮</span>
+      <input class="exi name" data-f="exi" data-k="name" data-id="${e.id}" value="${esc(e.name)}" aria-label="Name">
+      <select class="exi" data-f="exi" data-k="skill" data-id="${e.id}" aria-label="Skill" title="Skill">${[1,2,3,4,5].map(v=>`<option value="${v}" ${+e.skill===v?'selected':''}>S${v}</option>`).join('')}</select>
+      <select class="exi" data-f="exi" data-k="plane" data-id="${e.id}" aria-label="Plane" title="Plane"><option value="">Plane</option>${PLANES.map(v=>`<option value="${v}" ${e.plane===v?'selected':''}>${v}</option>`).join('')}</select>
+      <input class="exi vid" data-f="exi" data-k="videoUrl" data-id="${e.id}" value="${esc(e.videoUrl||'')}" placeholder="Video link" aria-label="Video link">
+      <button class="btn ghost sm" data-act="exEdit" data-id="${e.id}" title="Equipment, muscles, categories, availability">More</button>
+      <span class="exflags">${(e.cats||[]).length>1?`<span class="pill" title="${esc(e.cats.map(c=>c.cat+(c.sub?' / '+c.sub:'')).join(', '))}">${e.cats.length}</span>`:''}${e.at_clubq===false?'<span class="pill" style="color:var(--danger)" title="Not at ClubQ">N/A</span>':''}</span></div>`;
   return `<div class="exrow"><span>${esc(e.name)}${e.videoUrl?' <span class="muted small">▶</span>':''}</span>${info}${(e.muscles||[]).length?`<span class="muted small">${esc(e.muscles.join(', '))}</span>`:''}</div>`;
 }
 function pickerResults(){
@@ -839,7 +861,7 @@ function libraryView(){
   const sel=(name,opts,val,label)=>`<select class="lf" data-f="lib" data-k="${name}"><option value="">${label}</option>${opts.map(o=>`<option value="${esc(o)}" ${String(val||'')===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
   return `<button class="back" data-act="back">‹ Clients</button>
   <div class="stack">
-    <div class="row between"><div><h1>Exercise library</h1><div class="muted small">${n} exercises${state.libEdit?' · Editing: drag an exercise to another subcategory to move it, tap its name to edit.':''}</div></div>
+    <div class="row between"><div><h1>Exercise library</h1><div class="muted small">${n} exercises${state.libEdit?' · Editing: change name, skill, plane or video in place; drag by ⋮⋮ to another subcategory; More for equipment, muscles, categories and availability.':''}</div></div>
       <div class="row">${isAdmin?`<button class="btn ${state.libEdit?'primary':''}" data-act="libEdit">${state.libEdit?'Done editing':'Editing mode'}</button>${state.libEdit?`<button class="btn" data-act="exNew">+ Add exercise</button>`:''}`:''}</div></div>
     <input data-f="lib" data-k="q" value="${esc(f.q||'')}" placeholder="Search name, category, equipment, muscle">
     <div class="chips" id="catJump"><button data-act="libCat" data-v="" aria-pressed="${!f.cat}">All</button>${[...CATS,'Unsorted'].map(c=>`<button data-act="libCat" data-v="${c}" aria-pressed="${f.cat===c}">${c}</button>`).join('')}</div>
@@ -848,6 +870,7 @@ function libraryView(){
     <div id="libResults" class="libwrap ${state.libEdit?'editing':''}">${libResults()}</div>
   </div>`;
 }
+function ddSummary(arr){ arr=(arr||[]).filter(Boolean); if(!arr.length) return 'Choose…'; return arr.length<=3 ? arr.join(', ') : arr.slice(0,2).join(', ')+' +'+(arr.length-2)+' more'; }
 function exEditor(){
   const e=state.exEdit; if(!e) return '';
   const chip=(k,v,on)=>`<button class="hab sm" data-act="exToggle" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on}">${esc(v)}</button>`;
@@ -856,8 +879,10 @@ function exEditor(){
     <div class="results" style="padding:14px 16px"><div class="stack">
       <div class="grid2"><div class="field"><label>Name</label><input data-f="ex" data-k="name" value="${esc(e.name||'')}"></div><div class="field"><label>Skill</label><select data-f="ex" data-k="skill">${[1,2,3,4,5].map(v=>`<option value="${v}" ${+e.skill===v?'selected':''}>${v}</option>`).join('')}</select></div></div>
       <div class="field"><label>Categories</label><div class="catgrid">${CATS.map(c=>`<div><div class="lsub" style="padding:4px 0">${esc(c)}</div><div class="row" style="gap:6px">${(SUBS[c].length?SUBS[c]:[null]).map(sub=>{ const on=(e.cats||[]).some(x=>x.cat===c && (x.sub||null)===(sub||null)); return `<button class="hab sm" data-act="exCat" data-cat="${esc(c)}" data-sub="${esc(sub||'')}" aria-pressed="${on}">${esc(sub||c)}</button>`; }).join('')}</div></div>`).join('')}</div></div>
-      <div class="field"><label>Equipment</label><div class="row" style="gap:6px">${EQUIP.map(v=>chip('equipment',v,(e.equipment||[]).includes(v))).join('')}</div></div>
-      <div class="field"><label>Muscles worked</label><div class="row" style="gap:6px">${MUSCLES.map(v=>chip('muscles',v,(e.muscles||[]).includes(v))).join('')}</div></div>
+      <div class="grid2">
+        <div class="field"><label>Equipment</label><details class="dd"><summary><span>${esc(ddSummary(e.equipment||[]))}</span><i>▾</i></summary><div class="ddlist">${EQUIP.map(v=>`<label><input type="checkbox" data-f="exchk" data-k="equipment" data-v="${esc(v)}" ${(e.equipment||[]).includes(v)?'checked':''}> ${esc(v)}</label>`).join('')}</div></details></div>
+        <div class="field"><label>Muscles worked</label><details class="dd"><summary><span>${esc(ddSummary(e.muscles||[]))}</span><i>▾</i></summary><div class="ddlist">${MUSCLES.map(v=>`<label><input type="checkbox" data-f="exchk" data-k="muscles" data-v="${esc(v)}" ${(e.muscles||[]).includes(v)?'checked':''}> ${esc(v)}</label>`).join('')}</div></details></div>
+      </div>
       <div class="grid3"><div class="field"><label>Plane</label><select data-f="ex" data-k="plane"><option value="">–</option>${PLANES.map(v=>`<option value="${v}" ${e.plane===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Available at ClubQ</label><select data-f="ex" data-k="at_clubq"><option value="yes" ${e.at_clubq!==false?'selected':''}>Yes</option><option value="no" ${e.at_clubq===false?'selected':''}>No</option></select></div><div class="field"><label>Setting</label><select data-f="ex" data-k="mode"><option value="">–</option>${['Both','In-Person','Solo'].map(v=>`<option value="${v}" ${e.mode===v?'selected':''}>${v}</option>`).join('')}</select></div></div>
       <div class="field"><label>Video link</label><input data-f="ex" data-k="videoUrl" value="${esc(e.videoUrl||'')}" placeholder="YouTube or Vimeo"></div>
       <div class="field"><label>Coaching notes</label><textarea rows="2" data-f="ex" data-k="notes">${esc(e.notes||'')}</textarea></div>
@@ -1061,11 +1086,12 @@ document.addEventListener('click', e => {
     case 'reopen': { const s=store.sessions[state.sessionId]; s.status='planned'; store.put('sessions',s); break; }
   }
 });
-let saveTimer=null, metaTimer=null, metricTimer=null;
+let saveTimer=null, metaTimer=null, metricTimer=null; const exiTimers={};
 document.addEventListener('input', e => {
   const el=e.target; const f=el.dataset.f||el.dataset.cf; if(!f || el.tagName==='SELECT') return;
   if (f==='lib'){ state.lib=state.lib||{}; state.lib[el.dataset.k]= el.type==='checkbox' ? el.checked : el.value; if(el.dataset.k==='q'){ const r=$('#libResults'); if(r) r.innerHTML=libResults(); } else render(); return; }
   if (f==='ex'){ const k=el.dataset.k; state.exEdit[k] = k==='at_clubq' ? el.value==='yes' : k==='skill' ? +el.value : el.value; return; }
+  if (f==='exi'){ const id=el.dataset.id, k=el.dataset.k, v=el.value; exiTimers[id+k] && clearTimeout(exiTimers[id+k]); exiTimers[id+k]=setTimeout(()=>{ const ex=store.exercises[id]; if(!ex) return; const val = k==='skill' ? +v : (k==='name' ? v.trim() : v.trim()); if(k==='name' && !val) return; if(ex[k]===val) return; ex[k]=val; store.put('exercises', ex); }, 600); return; }
   if (f==='newName'){ state.newName=el.value; return; }
   if (f==='newGoal'){ state.newGoal=el.value; return; }
   if (f==='blockWeeks'){ state.blockWeeks=el.value; return; }
@@ -1106,7 +1132,7 @@ document.addEventListener('click', e => {
 let drag=null, suppressClick=0;
 function dragStart(chip, x, y){ drag={id:chip.dataset.id||chip.dataset.dragex, ex:!!chip.dataset.dragex, fromCat:chip.dataset.fromCat, fromSub:chip.dataset.fromSub||null, x, y, chip, active:false, over:null}; }
 function dragMove(x, y, ev){ if(!drag) return; const dx=x-drag.x, dy=y-drag.y; if(!drag.active){ if(Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=y; if(ev && ev.cancelable) ev.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const sel = drag.ex ? '.subblock[data-cat]' : '.day[data-date]'; const day=[...document.querySelectorAll(sel)].find(d=>{ const r=d.getBoundingClientRect(); return x>=r.left && x<=r.right && y>=r.top && y<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } }
-document.addEventListener('pointerdown', e => { if(e.pointerType==='touch') return; const chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex]'); if(!chip || e.button || e.target.closest('button.exname')) return; dragStart(chip, e.clientX, e.clientY); try{ chip.setPointerCapture(e.pointerId); }catch(x){} });
+document.addEventListener('pointerdown', e => { if(e.pointerType==='touch') return; const chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex]'); if(!chip || e.button || e.target.closest('input,select,button,a')) return; dragStart(chip, e.clientX, e.clientY); try{ chip.setPointerCapture(e.pointerId); }catch(x){} });
 document.addEventListener('touchstart', e => { let chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex] .grip'); if(!chip || e.touches.length!==1) return; if(chip.classList.contains('grip')) chip=chip.closest('.exrow'); const t=e.touches[0]; dragStart(chip, t.clientX, t.clientY); }, {passive:true});
 document.addEventListener('touchmove', e => { if(!drag) return; const t=e.touches[0]; dragMove(t.clientX, t.clientY, e); }, {passive:false});
 document.addEventListener('touchend', e => { if(!drag) return; if(drag.active){ e.preventDefault(); } endDrag(e); }, {passive:false});
@@ -1119,6 +1145,8 @@ document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='
 document.addEventListener('pointerup', e => { if(e.pointerType==='touch') return; endDrag(e); }); document.addEventListener('pointercancel', e => { if(e.pointerType==='touch') return; endDrag(e); });
 document.addEventListener('change', e => {
   const el=e.target;
+  if(el.dataset.f==='exi' && el.tagName==='SELECT'){ const ex=store.exercises[el.dataset.id]; if(ex){ const k=el.dataset.k; ex[k]= k==='skill' ? +el.value : el.value; store.put('exercises', ex); } return; }
+  if(el.dataset.f==='exchk'){ const arr=state.exEdit[el.dataset.k]=state.exEdit[el.dataset.k]||[]; const v=el.dataset.v; const i=arr.indexOf(v); if(el.checked && i<0) arr.push(v); if(!el.checked && i>=0) arr.splice(i,1); if(el.dataset.k==='equipment'){ if(v!=='None' && el.checked && arr.includes('None')) { arr.splice(arr.indexOf('None'),1); const nb=el.closest('.ddlist').querySelector('input[data-v="None"]'); if(nb) nb.checked=false; } if(!arr.length){ arr.push('None'); const nb=el.closest('.ddlist').querySelector('input[data-v="None"]'); if(nb) nb.checked=true; } } const sum=el.closest('details').querySelector('summary span'); if(sum) sum.textContent=ddSummary(arr); return; }
   if(el.dataset.f==='lib' && (el.tagName==='SELECT' || el.type==='checkbox')){ state.lib=state.lib||{}; state.lib[el.dataset.k]= el.type==='checkbox' ? el.checked : el.value; render(); return; }
   if(el.dataset.f==='ex' && el.tagName==='SELECT' && state.exEdit){ const k=el.dataset.k; state.exEdit[k] = k==='at_clubq' ? el.value==='yes' : k==='skill' ? +el.value : el.value; return; }
   if(el.dataset.f==='rpe' && el.tagName==='SELECT' && state.mode==='coach' && state.draft && el.dataset.k!=null){ const it=state.draft.items[+el.dataset.i]; ensureRx(it); it.setsRx[+el.dataset.k].rpe=rpeNorm(el.value); it.rpe=it.setsRx[0].rpe; return; }

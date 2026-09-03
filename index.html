@@ -829,7 +829,7 @@ function exRow(e, opts, bl){
       <select class="exi" data-f="exi" data-k="skill" data-id="${e.id}" aria-label="Skill" title="Skill">${[1,2,3,4,5].map(v=>`<option value="${v}" ${+e.skill===v?'selected':''}>S${v}</option>`).join('')}</select>
       <select class="exi" data-f="exi" data-k="plane" data-id="${e.id}" aria-label="Plane" title="Plane"><option value="">Plane</option>${PLANES.map(v=>`<option value="${v}" ${e.plane===v?'selected':''}>${v}</option>`).join('')}</select>
       <input class="exi vid" data-f="exi" data-k="videoUrl" data-id="${e.id}" value="${esc(e.videoUrl||'')}" placeholder="Video link" aria-label="Video link">
-      <button class="btn ghost sm" data-act="exEdit" data-id="${e.id}" title="Equipment, muscles, categories, availability">More</button>
+      <button class="btn ghost sm" data-act="exEdit" data-id="${e.id}" title="Equipment, muscles, categories, availability">More</button><button class="btn ghost sm" data-act="exVariant" data-id="${e.id}" title="New exercise based on this one">Variation</button>
       <span class="exflags">${(e.cats||[]).length>1?`<span class="pill" title="${esc(e.cats.map(c=>c.cat+(c.sub?' / '+c.sub:'')).join(', '))}">${e.cats.length}</span>`:''}${e.at_clubq===false?'<span class="pill" style="color:var(--danger)" title="Not at ClubQ">N/A</span>':''}</span></div>`;
   return `<div class="exrow"><span>${esc(e.name)}${e.videoUrl?' <span class="muted small">▶</span>':''}</span>${info}${(e.muscles||[]).length?`<span class="muted small">${esc(e.muscles.join(', '))}</span>`:''}</div>`;
 }
@@ -878,7 +878,7 @@ function exEditor(){
   const e=state.exEdit; if(!e) return '';
   const chip=(k,v,on)=>`<button class="hab sm" data-act="exToggle" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on}">${esc(v)}</button>`;
   return `<div class="picker" data-act="closeExEdit"><div class="sheet" style="max-width:720px">
-    <header><div class="row between"><h2>${e.id?'Edit exercise':'New exercise'}</h2><button class="btn ghost sm" data-act="closeExEdit">Close</button></div></header>
+    <header><div class="row between"><h2>${e.id?'Edit exercise':(e.variantOf?'New variation':'New exercise')}</h2><button class="btn ghost sm" data-act="closeExEdit">Close</button></div></header>
     <div class="results" style="padding:14px 16px"><div class="stack">
       <div class="grid2"><div class="field"><label>Name</label><input data-f="ex" data-k="name" value="${esc(e.name||'')}"></div><div class="field"><label>Skill</label><select data-f="ex" data-k="skill">${[1,2,3,4,5].map(v=>`<option value="${v}" ${+e.skill===v?'selected':''}>${v}</option>`).join('')}</select></div></div>
       <div class="field"><label>Categories</label><details class="dd"><summary><span>${esc(catSummary(e.cats||[]))}</span><i>▾</i></summary><div class="ddlist">${CATS.map(c=>`<div class="ddgroup">${esc(c)}</div>${(SUBS[c].length?SUBS[c]:[null]).map(sub=>{ const on=(e.cats||[]).some(x=>x.cat===c && (x.sub||null)===(sub||null)); return `<label><input type="checkbox" data-f="excat" data-cat="${esc(c)}" data-sub="${esc(sub||'')}" ${on?'checked':''}> ${esc(sub||c)}</label>`; }).join('')}`).join('')}</div></details></div>
@@ -889,7 +889,8 @@ function exEditor(){
       <div class="grid3"><div class="field"><label>Plane</label><select data-f="ex" data-k="plane"><option value="">–</option>${PLANES.map(v=>`<option value="${v}" ${e.plane===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Available at ClubQ</label><select data-f="ex" data-k="at_clubq"><option value="yes" ${e.at_clubq!==false?'selected':''}>Yes</option><option value="no" ${e.at_clubq===false?'selected':''}>No</option></select></div><div class="field"><label>Setting</label><select data-f="ex" data-k="mode"><option value="">–</option>${['Both','In-Person','Solo'].map(v=>`<option value="${v}" ${e.mode===v?'selected':''}>${v}</option>`).join('')}</select></div></div>
       <div class="field"><label>Video link</label><input data-f="ex" data-k="videoUrl" value="${esc(e.videoUrl||'')}" placeholder="YouTube or Vimeo"></div>
       <div class="field"><label>Coaching notes</label><textarea rows="2" data-f="ex" data-k="notes">${esc(e.notes||'')}</textarea></div>
-      <div class="row between">${e.id?`<button class="btn ghost ${e.archived?'':'danger'}" data-act="exArchive">${e.archived?'Restore':'Archive'}</button>`:'<span></span>'}<div class="row"><button class="btn" data-act="closeExEdit">Cancel</button><button class="btn primary" data-act="exSave">Save</button></div></div>
+      ${e.variantOf && store.exercises[e.variantOf] ? `<div class="muted small">Variation of ${esc(store.exercises[e.variantOf].name)}</div>` : ''}
+      <div class="row between"><span class="row">${e.id?`<button class="btn ghost ${e.archived?'':'danger'}" data-act="exArchive">${e.archived?'Restore':'Archive'}</button><button class="btn ghost" data-act="exVariant" data-id="${e.id}">Add a variation</button>`:''}</span><div class="row"><button class="btn" data-act="closeExEdit">Cancel</button><button class="btn primary" data-act="exSave">Save</button></div></div>
     </div></div></div></div>`;
 }
 
@@ -1004,6 +1005,7 @@ document.addEventListener('click', e => {
     case 'seedLib': store.seedLibrary(); break;
     case 'exNew': state.exEdit={name:'', cats:(state.lib&&state.lib.cat&&state.lib.cat!=='Unsorted')?[{cat:state.lib.cat, sub:(SUBS[state.lib.cat]||[])[0]||null}]:[], skill:1, equipment:['None'], muscles:[], plane:'', at_clubq:true, mode:'', videoUrl:'', notes:''}; render(); break;
     case 'exEdit': state.exEdit=JSON.parse(JSON.stringify(store.exercises[id])); render(); break;
+    case 'exVariant': { const src=store.exercises[id]; if(!src) return; const v=JSON.parse(JSON.stringify(src)); delete v.id; v.variantOf=src.id; v.archived=false; v.videoUrl=''; v.name=src.name+' '; state.exEdit=v; render(); setTimeout(()=>{ const n=document.querySelector('input[data-f="ex"][data-k="name"]'); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); } },30); break; }
     case 'closeExEdit': if (el.classList.contains('picker') && e.target!==el) return; state.exEdit=null; render(); break;
     case 'exToggle': { const k=el.dataset.k, v=el.dataset.v; const arr=state.exEdit[k]=state.exEdit[k]||[]; const i=arr.indexOf(v); if(i>=0) arr.splice(i,1); else arr.push(v); if(k==='equipment'){ if(v!=='None' && arr.includes('None') && arr.length>1) arr.splice(arr.indexOf('None'),1); if(!arr.length) arr.push('None'); } render(); break; }
     case 'exCat': { const c=el.dataset.cat, sub=el.dataset.sub||null; const arr=state.exEdit.cats=state.exEdit.cats||[]; const i=arr.findIndex(x=>x.cat===c && (x.sub||null)===sub); if(i>=0) arr.splice(i,1); else arr.push({cat:c, sub}); render(); break; }

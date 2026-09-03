@@ -743,9 +743,11 @@ function libraryView(){
     <div><h1>Exercise library</h1><div class="muted small">${LIB.length} movements from the master sheet. Paste a YouTube or Vimeo link on any exercise and the client gets a Watch link.</div></div>
     <input data-f="libQ" value="${esc(state.libQ||'')}" placeholder="Search name, pattern, equipment">
     <div class="chips"><button data-act="libCat" data-v="" aria-pressed="${!cat}">All</button>${CATS.map(c=>`<button data-act="libCat" data-v="${c}" aria-pressed="${cat===c}">${c}</button>`).join('')}</div>
-    <div class="card" style="padding:4px 8px">${groupRows(rows.slice(0,150), null, true)}${rows.length>150?`<div class="muted small" style="padding:8px">Showing 150 of ${rows.length}. Narrow the search.</div>`:''}</div>
+    <div class="card" style="padding:4px 8px" id="libResults">${libResults(rows)}</div>
   </div>`;
 }
+function libRows(){ const q=(state.libQ||'').toLowerCase(); const cat=state.libCat||''; return LIB.filter(e => (!cat || e.cat===cat) && (!q || e.name.toLowerCase().includes(q) || e.group.toLowerCase().includes(q) || e.equip.toLowerCase().includes(q))); }
+function libResults(rows){ rows=rows||libRows(); return groupRows(rows.slice(0,150), null, true) + (rows.length>150?`<div class="muted small" style="padding:8px">Showing 150 of ${rows.length}. Narrow the search.</div>`:''); }
 function groupRows(rows, act, withVideo){
   let out='', g=null;
   rows.forEach(e=>{ if(e.group!==g){ g=e.group; out+=`<div class="g" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);padding:10px 8px 2px;font-weight:600">${esc(e.cat)} · ${esc(g)}</div>`; }
@@ -753,6 +755,13 @@ function groupRows(rows, act, withVideo){
     if (act) out += `<button data-act="${act}" data-name="${esc(e.name)}">${inner}</button>`;
     else out += `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:160px">${inner.replace('</span><span','</span> <span')}</span>${withVideo?`<input class="vid" data-f="video" data-name="${esc(e.name)}" value="${esc(meta(e.name).videoUrl||'')}" placeholder="Video link">`:''}</div>`; });
   return out || '<div class="empty">Nothing matches.</div>';
+}
+function pickerResults(){
+  const q=(state.picker.q||'').toLowerCase(); const cat=state.picker.cat||''; const pk=state.picker;
+  let rows;
+  if (pk.target==='swap' && !q && !cat){ const cur=LIB.find(e=>e.name.toLowerCase()===pk.swapName.toLowerCase()); rows = cur ? LIB.filter(e=>e.group===cur.group && e.name!==cur.name).sort((a,b)=>Math.abs(a.skill-cur.skill)-Math.abs(b.skill-cur.skill)).slice(0,40) : []; return rows.map(e=>`<button data-act="pick" data-name="${esc(e.name)}"><span>${esc(e.name)}</span><span class="muted small num">S${e.skill} · ${esc(e.equip)}</span></button>`).join('') || '<div class="empty">No direct alternatives listed. Search above.</div>'; }
+  rows = LIB.filter(e => (!cat || e.cat===cat) && (!q || e.name.toLowerCase().includes(q) || e.group.toLowerCase().includes(q) || e.equip.toLowerCase().includes(q))).slice(0,120);
+  return groupRows(rows,'pick') + (q && !LIB.some(e=>e.name.toLowerCase()===q) ? `<button data-act="pick" data-name="${esc(state.picker.q)}"><span>${pk.target==='swap'?'Swap to':'Add'} “${esc(state.picker.q)}”</span><span class="muted small">Not in library</span></button>` : '');
 }
 function pickerView(){
   const q=(state.picker.q||'').toLowerCase(); const cat=state.picker.cat||''; const pk=state.picker;
@@ -767,9 +776,7 @@ function pickerView(){
         <input id="pickQ" data-f="pickQ" value="${esc(state.picker.q||'')}" placeholder="Search the ClubQ library" autofocus>
         <div class="chips"><button data-act="pickCat" data-v="" aria-pressed="${!cat}">All</button>${CATS.map(c=>`<button data-act="pickCat" data-v="${c}" aria-pressed="${cat===c}">${c}</button>`).join('')}</div>
       </header>
-      <div class="results">${pk.target==='swap' && !q && !cat ? rows.map(e=>`<button data-act="pick" data-name="${esc(e.name)}"><span>${esc(e.name)}</span><span class="muted small num">S${e.skill} · ${esc(e.equip)}</span></button>`).join('') || '<div class="empty">No direct alternatives listed. Search above.</div>' : groupRows(rows,'pick')}
-        ${q && !LIB.some(e=>e.name.toLowerCase()===q) ? `<button data-act="pick" data-name="${esc(state.picker.q)}"><span>${pk.target==='swap'?'Swap to':'Add'} “${esc(state.picker.q)}”</span><span class="muted small">Not in library</span></button>` : ''}
-      </div>
+      <div class="results" id="pickResults">${pickerResults()}</div>
     </div></div>`;
 }
 
@@ -959,7 +966,7 @@ document.addEventListener('click', e => {
 let saveTimer=null, metaTimer=null, metricTimer=null;
 document.addEventListener('input', e => {
   const el=e.target; const f=el.dataset.f||el.dataset.cf; if(!f || el.tagName==='SELECT') return;
-  if (f==='libQ'){ state.libQ=el.value; rerenderKeepFocus(el); return; }
+  if (f==='libQ'){ state.libQ=el.value; const r=$('#libResults'); if(r) r.innerHTML=libResults(); return; }
   if (f==='newName'){ state.newName=el.value; return; }
   if (f==='newGoal'){ state.newGoal=el.value; return; }
   if (f==='blockWeeks'){ state.blockWeeks=el.value; return; }
@@ -972,7 +979,7 @@ document.addEventListener('input', e => {
   if (f==='metric'){ const cid=state.clientSelf, date=el.dataset.date, k=el.dataset.k, v= k==='notes' ? el.value : (el.value===''?null:+el.value); if(k!=='notes') el.classList.toggle('filled', el.value!==''); clearTimeout(metricTimer); metricTimer=setTimeout(()=>{ const m=mdoc(cid,date); m[k]=v; store.put('metrics',m); },500); return; }
   if (f==='cintake'){ const k=el.dataset.k, v=el.value; clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const c=store.clients[state.clientId]; if(!c) return; c.intake=c.intake||{answers:{}, completedAt:today()}; c.intake.answers=Object.assign({},c.intake.answers||{}); c.intake.answers[k]=v; c.intake.updatedAt=today(); c.intake.filledBy='coach'; store.put('clients',c); },600); return; }
   if (f==='clientGoal' || f==='clientEmail' || f==='target'){ clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const c=store.clients[state.clientId]; if(!c) return; if(f==='clientGoal') c.goal=el.value.trim(); else if(f==='clientEmail') c.email=el.value.trim().toLowerCase(); else { c.targets=Object.assign({},c.targets||{}); c.targets[el.dataset.k]=el.value===''?null:+el.value; } store.put('clients',c); },500); return; }
-  if (f==='pickQ'){ state.picker.q=el.value; rerenderKeepFocus(el); return; }
+  if (f==='pickQ'){ state.picker.q=el.value; const r=$('#pickResults'); if(r) r.innerHTML=pickerResults(); return; }
   if (f==='video'){ const name=el.dataset.name; clearTimeout(metaTimer); metaTimer=setTimeout(()=>{ const m=Object.assign({}, meta(name), {id:slug(name), name, videoUrl:el.value.trim()}); store.put('exmeta', m); },500); return; }
   if (state.mode==='coach' && state.draft){
     if (el.dataset.cf!=null){ const it=state.draft.items[+el.dataset.i]; it.cardio=it.cardio||{}; it.cardio[el.dataset.cf]=el.value; return; }
@@ -1003,7 +1010,8 @@ document.addEventListener('pointerdown', e => { const chip=e.target.closest && e
 document.addEventListener('pointermove', e => { if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; if(!drag.active){ if(Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=e.clientY; e.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const day=[...document.querySelectorAll('.day[data-date]')].find(d=>{ const r=d.getBoundingClientRect(); return e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.day.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } });
 function endDrag(e){ if(!drag) return; const d=drag; drag=null; clearInterval(d.timer); d.chip.classList.remove('dragging'); d.chip.style.transform=''; document.querySelectorAll('.day.over').forEach(x=>x.classList.remove('over')); if(!d.active) return; suppressClick=Date.now(); const s=store.sessions[d.id]; if(d.over && s && s.date!==d.over.dataset.date){ if(state.mode==='client'){ s.movedFrom=s.movedFrom||s.date; s.movedByClient=true; } s.date=d.over.dataset.date; store.put('sessions',s); toast('Moved to '+fmtDate(s.date)); } else render(); }
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='loginEmail'){ e.preventDefault(); store.sendLink(e.target.value); } });
-document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='INPUT' && el.getAttribute('inputmode') && el.value!==''){ const sel=()=>{ try{ el.select(); }catch(x){} }; sel(); setTimeout(sel,0); } });
+let lastPointer=0; document.addEventListener('pointerdown', ()=>{ lastPointer=Date.now(); }, true);
+document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='INPUT' && el.getAttribute('inputmode') && el.value!=='' && Date.now()-lastPointer<600){ const sel=()=>{ try{ el.select(); }catch(x){} }; sel(); setTimeout(sel,0); } });
 document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
 document.addEventListener('change', e => {
   const el=e.target;
@@ -1015,7 +1023,10 @@ document.addEventListener('change', e => {
 });
 function rerenderKeepFocus(el){ const id=el.id, pos=el.selectionStart; render(); const n = id ? document.getElementById(id) : document.querySelector('[data-f="'+el.dataset.f+'"]'); if(n){ n.focus(); try{n.setSelectionRange(pos,pos);}catch(x){} } }
 
-store.onChange(()=>{ if (state.mode==='coach' && (state.page==='edit' || state.page==='library')) { const sy=$('#sync'); sy.className='sync '+(store.mode==='shared'?'on':'local'); return; } renderKeepFocus(); });
+let pendingRender=false;
+function typing(){ const a=document.activeElement; return a && (a.tagName==='INPUT'||a.tagName==='TEXTAREA') && a.type!=='date'; }
+store.onChange(()=>{ if (state.mode==='coach' && (state.page==='edit' || state.page==='library')) { const sy=$('#sync'); sy.className='sync '+(store.mode==='shared'?'on':'local'); return; } if (typing()) { pendingRender=true; return; } render(); });
+document.addEventListener('focusout', ()=>{ if(pendingRender){ pendingRender=false; setTimeout(()=>{ if(!typing()) render(); else pendingRender=true; }, 60); } });
 function renderKeepFocus(){ const a=document.activeElement; const isField = a && (a.tagName==='INPUT'||a.tagName==='TEXTAREA') && a.dataset.f; const key = isField ? {f:a.dataset.f,i:a.dataset.i,k:a.dataset.k,pos:a.selectionStart,val:a.value} : null; render(); if(key){ const sel='[data-f="'+key.f+'"]'+(key.i!=null?'[data-i="'+key.i+'"]':'')+(key.k!=null?'[data-k="'+key.k+'"]':''); const n=document.querySelector(sel); if(n){ if(n.value!==key.val) n.value=key.val; n.focus(); try{n.setSelectionRange(key.pos,key.pos);}catch(x){} } } }
 render();
 store.init();

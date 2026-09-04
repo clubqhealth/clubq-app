@@ -2,13 +2,13 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FAF9F6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="ClubQ">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>ClubQ Training</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Instrument+Sans:wght@400;500;600&display=swap">
@@ -65,6 +65,7 @@ main{padding:16px;max-width:1080px;width:100%;margin:0 auto}
 .pill.planned{background:var(--surface-2);color:var(--ink-2)}
 .pill.done{background:var(--ink);color:var(--accent-ink)}
 [hidden]{display:none!important}
+@media (max-width:820px){ input,select,textarea{font-size:16px} select.warm{height:30px;font-size:14px} }
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r-sm);padding:9px 14px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn:hover{border-color:var(--ink-3)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -172,7 +173,8 @@ footer.note{padding:10px 16px;text-align:center;color:var(--ink-3);font-size:12p
 .day.today{border-color:var(--camel)}
 .day.over{background:var(--accent-soft);border-color:var(--ink)}
 .chip.dragging{opacity:.85;box-shadow:var(--shadow);position:relative;z-index:9}
-.chip[data-drag]{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.chip[data-drag]{cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.chip.armed{outline:2px solid var(--camel);outline-offset:1px}
 .day{-webkit-touch-callout:none}
 .chip.missed{border-color:var(--danger);color:var(--danger)}
 .chiprow{display:flex;gap:3px;align-items:stretch;position:relative}
@@ -311,7 +313,6 @@ button.exrow:hover{background:var(--surface-2)}
         <button data-act="mode" data-v="coach" aria-pressed="true">Coach</button>
         <button data-act="mode" data-v="client" aria-pressed="false">Client</button>
       </div>
-      <button class="btn ghost sm" data-act="pwOpen" id="pwBtn" hidden title="Set or change your password">Password</button>
       <button class="btn ghost sm" data-act="signout" id="signoutBtn" hidden>Sign out</button>
     </div>
   </header>
@@ -436,12 +437,18 @@ const store = {
     if (error){ const err=$('.pwerr'); if(err) err.textContent=error.message; return false; }
     if (data && data.user && auth.session) auth.session.user = data.user; state.pw=false; state.pwError=''; toast('Password saved'); render(); return true;
   },
+  async verifyCode(code){
+    code=(code||'').replace(/\D/g,''); if(code.length<6){ auth.error='Enter the 6-digit code from the email.'; render(); return; }
+    const { error } = await this.sb.auth.verifyOtp({ email: auth.sent, token: code, type: 'email' });
+    if (error){ auth.error = /expired|invalid/i.test(error.message) ? 'That code is wrong or has expired. Check the newest email, or go back and request another.' : error.message; render(); }
+    else { auth.error=''; auth.sent=false; }
+  },
   async sendLink(email){
     email=(email||'').trim().toLowerCase(); if(!/^\S+@\S+\.\S+$/.test(email)){ toast('Enter your email address'); return; }
     const redirect = location.origin + location.pathname;
     const { error } = await this.sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: redirect, shouldCreateUser:true } });
     if (error){ auth.error = error.message; } else { auth.sent = email; auth.error=''; }
-    render();
+    render(); setTimeout(()=>{ const c=$('#loginCode'); if(c) c.focus(); },50);
   },
   async signOut(){ if(this.sb) await this.sb.auth.signOut(); auth.coach=null; auth.client=null; auth.error=''; auth.sent=false; state.clientSelf=null; try{ localStorage.removeItem('clubq-self'); }catch(e){} this.clients={}; this.sessions={}; this.metrics={}; this.ready=false; render(); },
   fallback(){
@@ -603,17 +610,17 @@ function render(){
   $('#modeLabel').textContent = state.mode==='coach' ? 'Coach' : 'Client';
   const sy=$('#sync'); sy.className='sync '+(store.mode==='shared'?'on':store.mode==='local'?'local':'');
   sy.querySelector('span').textContent = store.mode==='shared' ? 'Synced' : store.mode==='local' ? 'This device only' : 'Connecting';
-  $('#foot').textContent = store.mode==='local' ? 'Local test mode. Data is saved in this browser only.' : auth.email ? 'Signed in as '+auth.email : 'ClubQ';
+  $('#foot').innerHTML = store.mode==='local' ? 'Local test mode. Data is saved in this browser only.' : auth.email ? `Signed in as ${esc(auth.email)} · <a href="#" data-act="account">Account</a>` : 'ClubQ';
   const m=$('#main');
   const signedIn = !!auth.session && (auth.coach||auth.client);
   $('#modeSeg').hidden = !(signedIn && auth.coach);
-  $('#signoutBtn').hidden = !auth.session || LOCAL; $('#pwBtn').hidden = !auth.session || LOCAL || !store.ready;
+  $('#signoutBtn').hidden = !auth.session || LOCAL;
   $('#modeLabel').textContent = auth.client && !auth.coach ? '' : (state.mode==='coach' ? 'Coach' : 'Client');
   if (!auth.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
   if (!auth.session) { m.innerHTML = loginView(); return; }
   if (auth.error && !signedIn) { m.innerHTML = `<div class="stack" style="max-width:480px;margin:40px auto"><h1>Not set up yet</h1><p style="color:var(--ink-2)">${esc(auth.error)}</p><button class="btn" data-act="signout">Use a different email</button></div>`; return; }
   if (!store.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
-  m.innerHTML = pwNudge() + (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '') + pwModal();
+  m.innerHTML = pwNudge() + (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '') + accountModal() + pwModal();
   m.querySelectorAll('textarea.grow').forEach(autosize);
 }
 function autosize(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
@@ -623,7 +630,12 @@ function loginView(){
   const linkMode = state.loginMode==='link';
   return `<div class="stack" style="max-width:420px;margin:40px auto">
     <div><h1>Sign in</h1><div class="muted small">${linkMode?'We will email you a link. Tap it and you are in, then set a password for next time.':'Use the email address your coach has for you.'}</div></div>
-    ${auth.sent ? `<div class="card stack"><b style="color:var(--ink)">Check your inbox</b><div style="color:var(--ink-2)">We sent a sign-in link to <b>${esc(auth.sent)}</b>. Open it on this device. It can take a minute to arrive; check junk if it doesn't.</div><button class="btn ghost sm" data-act="loginAgain" style="align-self:flex-start">Back</button></div>`
+    ${auth.sent ? `<div class="card stack"><b style="color:var(--ink)">Check your inbox</b><div style="color:var(--ink-2)">We emailed a 6-digit code to <b>${esc(auth.sent)}</b>. Type it here to sign in on this device. It can take a minute to arrive; check junk if it doesn't.</div>
+        <div class="field"><label>Code from the email</label><input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" style="font-size:22px;letter-spacing:.2em;text-align:center"></div>
+        ${auth.error?`<div class="small" style="color:var(--danger)">${esc(auth.error)}</div>`:''}
+        <button class="btn primary" data-act="verifyCode">Sign in</button>
+        <div class="muted small">The email also has a link. It works too, but it opens in your browser rather than in this app, so the code is better here.</div>
+        <button class="btn ghost sm" data-act="loginAgain" style="align-self:flex-start">Back</button></div>`
     : `<div class="card stack">
         <div class="field"><label>Email</label><input id="loginEmail" data-f="loginEmail" type="email" inputmode="email" autocomplete="username" value="${esc(state.loginEmail||'')}" placeholder="you@example.com"></div>
         ${linkMode ? '' : `<div class="field"><label>Password</label><input id="loginPw" data-f="loginPw" type="password" autocomplete="current-password" value="${esc(state.loginPw||'')}" placeholder="Your password"></div>`}
@@ -634,7 +646,13 @@ function loginView(){
   </div>`;
 }
 function hasPassword(){ const u=auth.session && auth.session.user; return !!(u && u.user_metadata && u.user_metadata.has_password); }
-function pwNudge(){ if(LOCAL || !auth.session || hasPassword() || state.pwDismissed) return ''; return `<div class="card row between" style="border-color:var(--camel);margin-bottom:12px"><div><b style="color:var(--ink)">Set a password</b><div class="muted small">Next time you can sign in without waiting for an email.</div></div><span class="row"><button class="btn ghost sm" data-act="pwDismiss">Not now</button><button class="btn sm primary" data-act="pwOpen">Set a password</button></span></div>`; }
+function pwNudge(){ let dismissed=false; try{ dismissed=localStorage.getItem('clubq-pwnudge')==='1'; }catch(e){} if(LOCAL || !auth.session || hasPassword() || dismissed) return ''; return `<div class="card row between" style="border-color:var(--camel);margin-bottom:12px"><div><b style="color:var(--ink)">Set a password</b><div class="muted small">Next time you can sign in without waiting for an email.</div></div><span class="row"><button class="btn ghost sm" data-act="pwDismiss">Not now</button><button class="btn sm primary" data-act="pwOpen">Set a password</button></span></div>`; }
+function accountModal(){ if(!state.account) return ''; return `<div class="picker" data-act="accountClose"><div class="sheet" style="max-width:420px"><header><div class="row between"><h2>Account</h2><button class="btn ghost sm" data-act="accountClose">Close</button></div></header>
+  <div class="stack" style="padding:16px">
+    <div><label>Signed in as</label><div style="color:var(--ink)">${esc(auth.email)}</div></div>
+    <div><label>Password</label><div class="muted small" style="margin-bottom:6px">${hasPassword()?'You sign in with a password on this account.':'No password set yet. You are signing in with emailed codes.'}</div><button class="btn sm" data-act="pwOpen">${hasPassword()?'Change password':'Set a password'}</button></div>
+    <div><label>Signing out</label><div class="muted small" style="margin-bottom:6px">You will need your password or an emailed code to get back in.</div><button class="btn ghost sm" data-act="signout">Sign out</button></div>
+  </div></div></div>`; }
 function pwModal(){ if(!state.pw) return ''; return `<div class="picker" data-act="pwClose"><div class="sheet" style="max-width:420px"><header><div class="row between"><h2>${hasPassword()?'Change password':'Set a password'}</h2><button class="btn ghost sm" data-act="pwClose">Close</button></div></header>
   <div class="stack" style="padding:16px">
     <div class="field"><label>New password</label><input id="pw1" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>
@@ -1182,11 +1200,14 @@ document.addEventListener('click', e => {
     case 'sendLink': store.sendLink(state.loginEmail||$('#loginEmail').value); break;
     case 'login': store.signInPw(state.loginEmail||$('#loginEmail').value, state.loginPw||($('#loginPw')||{}).value); break;
     case 'loginMode': state.loginMode=el.dataset.v; auth.error=''; render(); setTimeout(()=>{ const q=$('#loginEmail'); if(q && !q.value) q.focus(); },30); break;
-    case 'pwOpen': state.pw=true; state.pwError=''; render(); setTimeout(()=>{ const q=$('#pw1'); if(q) q.focus(); },30); break;
+    case 'pwOpen': state.pw=true; state.account=false; state.pwError=''; render(); setTimeout(()=>{ const q=$('#pw1'); if(q) q.focus(); },30); break;
     case 'pwClose': if (el.classList.contains('picker') && e.target!==el) return; state.pw=false; render(); break;
-    case 'pwDismiss': state.pwDismissed=true; render(); break;
+    case 'pwDismiss': try{ localStorage.setItem('clubq-pwnudge','1'); }catch(x){} render(); break;
+    case 'account': e.preventDefault(); state.account=true; render(); break;
+    case 'accountClose': if (el.classList.contains('picker') && e.target!==el) return; state.account=false; render(); break;
     case 'pwSave': { const a=$('#pw1').value, b=$('#pw2').value; const err=$('.pwerr'); if(a.length<8){ if(err) err.textContent='Use at least 8 characters.'; break; } if(a!==b){ if(err) err.textContent='The two passwords do not match.'; break; } if(err) err.textContent=''; store.setPassword(a); break; }
     case 'loginAgain': auth.sent=false; auth.error=''; render(); break;
+    case 'verifyCode': store.verifyCode(($('#loginCode')||{}).value); break;
     case 'signout': store.signOut(); break;
     case 'assign': { const c=store.clients[state.clientId]; const on = !auth.assignments.some(a=>a.coach_email===el.dataset.v && a.client_id===c.id); store.setAssignment(el.dataset.v, c.id, on); break; }
     case 'copyWorkout': { const d=state.draft; const c=store.clients[d.clientId]; setClip({title:d.title, focus:d.focus||'', items:cloneItems(d.items,false), clientName:c?c.name:''}); toast('Copied. Open any client’s week and tap ⎘ on a day.'); render(); break; }
@@ -1273,15 +1294,19 @@ document.addEventListener('click', e => {
 /* pointer-based drag of a workout chip onto another day (works with mouse and touch) */
 let drag=null, suppressClick=0;
 function dragStart(chip, x, y){ drag={id:chip.dataset.id||chip.dataset.dragex, ex:!!chip.dataset.dragex, fromCat:chip.dataset.fromCat, fromSub:chip.dataset.fromSub||null, x, y, chip, active:false, over:null}; }
-function dragMove(x, y, ev){ if(!drag) return; const dx=x-drag.x, dy=y-drag.y; if(!drag.active){ if(Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=y; if(ev && ev.cancelable) ev.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const sel = drag.ex ? '.subblock[data-cat]' : '.day[data-date]'; const day=[...document.querySelectorAll(sel)].find(d=>{ const r=d.getBoundingClientRect(); return x>=r.left && x<=r.right && y>=r.top && y<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } }
+function dragMove(x, y, ev){ if(!drag) return; const dx=x-drag.x, dy=y-drag.y; if(!drag.active){ if(!drag.held && Math.hypot(dx,dy)<8) return; drag.active=true; drag.chip.classList.add('dragging'); drag.timer=setInterval(()=>{ if(!drag) return; const h=window.innerHeight; if(drag.ly>h-70) window.scrollBy(0,10); else if(drag.ly<70) window.scrollBy(0,-10); },16); } drag.ly=y; if(ev && ev.cancelable) ev.preventDefault(); drag.chip.style.transform=`translate(${dx}px,${dy}px)`; const sel = drag.ex ? '.subblock[data-cat]' : '.day[data-date]'; const day=[...document.querySelectorAll(sel)].find(d=>{ const r=d.getBoundingClientRect(); return x>=r.left && x<=r.right && y>=r.top && y<=r.bottom; }); if(day!==drag.over){ document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(day) day.classList.add('over'); drag.over=day; } }
 document.addEventListener('pointerdown', e => { if(e.pointerType==='touch') return; const chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex]'); if(!chip || e.button) return; const ctl=e.target.closest('input,select,button,a'); if(ctl && ctl!==chip && chip.contains(ctl)) return; dragStart(chip, e.clientX, e.clientY); try{ chip.setPointerCapture(e.pointerId); }catch(x){} });
-document.addEventListener('touchstart', e => { let chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex] .grip'); if(!chip || e.touches.length!==1) return; if(chip.classList.contains('grip')) chip=chip.closest('.exrow'); const t=e.touches[0]; dragStart(chip, t.clientX, t.clientY); }, {passive:true});
-document.addEventListener('touchmove', e => { if(!drag) return; const t=e.touches[0]; dragMove(t.clientX, t.clientY, e); }, {passive:false});
-document.addEventListener('touchend', e => { if(!drag) return; if(drag.active){ e.preventDefault(); } endDrag(e); }, {passive:false});
-document.addEventListener('touchcancel', endDrag);
+let hold=null; /* touch: chips need a 350ms hold before they drag, so scrolling never moves a workout; the library grip drags at once */
+function clearHold(){ if(hold){ clearTimeout(hold.timer); hold.chip.classList.remove('armed'); hold=null; } }
+document.addEventListener('touchstart', e => { let chip=e.target.closest && e.target.closest('.chip[data-drag], .exrow[data-dragex] .grip'); if(!chip || e.touches.length!==1) return; const t=e.touches[0];
+  if(chip.classList.contains('grip')){ chip=chip.closest('.exrow'); dragStart(chip, t.clientX, t.clientY); return; }
+  clearHold(); hold={chip, x:t.clientX, y:t.clientY, timer:setTimeout(()=>{ if(!hold) return; const h=hold; hold=null; dragStart(h.chip, h.x, h.y); drag.held=true; h.chip.classList.add('armed'); try{ navigator.vibrate && navigator.vibrate(12); }catch(x){} }, 350)}; }, {passive:true});
+document.addEventListener('touchmove', e => { const t=e.touches[0]; if(hold){ if(Math.hypot(t.clientX-hold.x, t.clientY-hold.y)>8) clearHold(); return; } if(!drag) return; dragMove(t.clientX, t.clientY, e); }, {passive:false});
+document.addEventListener('touchend', e => { clearHold(); if(!drag) return; if(drag.active || drag.held){ e.preventDefault(); } endDrag(e); }, {passive:false});
+document.addEventListener('touchcancel', e => { clearHold(); endDrag(e); });
 document.addEventListener('pointermove', e => { if(!drag || e.pointerType==='touch') return; dragMove(e.clientX, e.clientY, e); });
-function endDrag(e){ if(!drag) return; const d=drag; drag=null; clearInterval(d.timer); d.chip.classList.remove('dragging'); d.chip.style.transform=''; document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(!d.active) return; suppressClick=Date.now(); if(d.ex){ const ex=store.exercises[d.id]; if(d.over && ex){ const tc=d.over.dataset.cat, ts=d.over.dataset.sub||null; if(tc!=='Unsorted' && !(tc===d.fromCat && ts===d.fromSub)){ ex.cats=(ex.cats||[]).filter(c=>!(c.cat===d.fromCat && (c.sub||null)===d.fromSub)); if(!ex.cats.some(c=>c.cat===tc && (c.sub||null)===ts)) ex.cats.push({cat:tc, sub:ts}); store.put('exercises', ex); toast(`${ex.name} → ${tc}${ts?' / '+ts:''}`); return; } } render(); return; } const s=store.sessions[d.id]; if(d.over && s && s.date!==d.over.dataset.date){ if(state.mode==='client'){ s.movedFrom=s.movedFrom||s.date; s.movedByClient=true; } s.date=d.over.dataset.date; store.put('sessions',s); toast('Moved to '+fmtDate(s.date)); } else render(); }
-document.addEventListener('keydown', e => { if(e.key!=='Enter') return; const id=e.target.id; if(id==='loginEmail' || id==='loginPw'){ e.preventDefault(); if(state.loginMode==='link') store.sendLink($('#loginEmail').value); else store.signInPw($('#loginEmail').value, ($('#loginPw')||{}).value); } if(id==='pw1'||id==='pw2'){ e.preventDefault(); const b=document.querySelector('[data-act="pwSave"]'); if(b) b.click(); } });
+function endDrag(e){ if(!drag) return; const d=drag; drag=null; clearInterval(d.timer); d.chip.classList.remove('dragging'); d.chip.classList.remove('armed'); if(d.held && !d.active){ suppressClick=Date.now(); render(); return; } d.chip.style.transform=''; document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(!d.active) return; suppressClick=Date.now(); if(d.ex){ const ex=store.exercises[d.id]; if(d.over && ex){ const tc=d.over.dataset.cat, ts=d.over.dataset.sub||null; if(tc!=='Unsorted' && !(tc===d.fromCat && ts===d.fromSub)){ ex.cats=(ex.cats||[]).filter(c=>!(c.cat===d.fromCat && (c.sub||null)===d.fromSub)); if(!ex.cats.some(c=>c.cat===tc && (c.sub||null)===ts)) ex.cats.push({cat:tc, sub:ts}); store.put('exercises', ex); toast(`${ex.name} → ${tc}${ts?' / '+ts:''}`); return; } } render(); return; } const s=store.sessions[d.id]; if(d.over && s && s.date!==d.over.dataset.date){ if(state.mode==='client'){ s.movedFrom=s.movedFrom||s.date; s.movedByClient=true; } s.date=d.over.dataset.date; store.put('sessions',s); toast('Moved to '+fmtDate(s.date)); } else render(); }
+document.addEventListener('keydown', e => { if(e.key!=='Enter') return; const id=e.target.id; if(id==='loginEmail' || id==='loginPw'){ e.preventDefault(); if(state.loginMode==='link') store.sendLink($('#loginEmail').value); else store.signInPw($('#loginEmail').value, ($('#loginPw')||{}).value); } if(id==='loginCode'){ e.preventDefault(); store.verifyCode(e.target.value); } if(id==='pw1'||id==='pw2'){ e.preventDefault(); const b=document.querySelector('[data-act="pwSave"]'); if(b) b.click(); } });
 let lastPointer=0; document.addEventListener('pointerdown', ()=>{ lastPointer=Date.now(); }, true);
 document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='INPUT' && el.getAttribute('inputmode') && el.value!=='' && Date.now()-lastPointer<600){ const sel=()=>{ try{ el.select(); }catch(x){} }; sel(); setTimeout(sel,0); } });
 document.addEventListener('pointerup', e => { if(e.pointerType==='touch') return; endDrag(e); }); document.addEventListener('pointercancel', e => { if(e.pointerType==='touch') return; endDrag(e); });

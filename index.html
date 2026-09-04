@@ -64,6 +64,7 @@ main{padding:16px;max-width:1080px;width:100%;margin:0 auto}
 .pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2)}
 .pill.planned{background:var(--surface-2);color:var(--ink-2)}
 .pill.done{background:var(--ink);color:var(--accent-ink)}
+[hidden]{display:none!important}
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r-sm);padding:9px 14px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn:hover{border-color:var(--ink-3)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -310,6 +311,7 @@ button.exrow:hover{background:var(--surface-2)}
         <button data-act="mode" data-v="coach" aria-pressed="true">Coach</button>
         <button data-act="mode" data-v="client" aria-pressed="false">Client</button>
       </div>
+      <button class="btn ghost sm" data-act="pwOpen" id="pwBtn" hidden title="Set or change your password">Password</button>
       <button class="btn ghost sm" data-act="signout" id="signoutBtn" hidden>Sign out</button>
     </div>
   </header>
@@ -422,6 +424,17 @@ const store = {
     toast('Setting up the library…');
     for (let i=0;i<rows.length;i+=100){ const {error}=await this.sb.from('exercises').insert(rows.slice(i,i+100)); if(error){ console.error(error); toast('Library setup failed: '+error.message); const re=await this.sb.from('exercises').select('*'); const o={}; (re.data||[]).forEach(r=>{ const v=MAP.exercises.fromRow(r); o[v.id]=v; }); this.exercises=o; this.emit(); return; } }
     const o={}; rows.forEach(r=>{ const v=MAP.exercises.fromRow(r); o[v.id]=v; }); this.exercises=o; toast('Library ready: '+rows.length+' exercises'); this.emit();
+  },
+  async signInPw(email, pw){
+    email=(email||'').trim().toLowerCase(); if(!/^\S+@\S+\.\S+$/.test(email)){ auth.error='Enter your email address'; render(); return; } if(!pw){ auth.error='Enter your password, or use the sign-in link below.'; render(); return; }
+    const { error } = await this.sb.auth.signInWithPassword({ email, password: pw });
+    if (error){ auth.error = /invalid login/i.test(error.message) ? 'That email and password do not match. If you have not set a password yet, use the sign-in link below.' : error.message; render(); }
+    else { auth.error=''; state.loginPw=''; }
+  },
+  async setPassword(pw){
+    const { data, error } = await this.sb.auth.updateUser({ password: pw, data: { has_password: true } });
+    if (error){ const err=$('.pwerr'); if(err) err.textContent=error.message; return false; }
+    if (data && data.user && auth.session) auth.session.user = data.user; state.pw=false; state.pwError=''; toast('Password saved'); render(); return true;
   },
   async sendLink(email){
     email=(email||'').trim().toLowerCase(); if(!/^\S+@\S+\.\S+$/.test(email)){ toast('Enter your email address'); return; }
@@ -594,25 +607,41 @@ function render(){
   const m=$('#main');
   const signedIn = !!auth.session && (auth.coach||auth.client);
   $('#modeSeg').hidden = !(signedIn && auth.coach);
-  $('#signoutBtn').hidden = !auth.session || LOCAL;
+  $('#signoutBtn').hidden = !auth.session || LOCAL; $('#pwBtn').hidden = !auth.session || LOCAL || !store.ready;
   $('#modeLabel').textContent = auth.client && !auth.coach ? '' : (state.mode==='coach' ? 'Coach' : 'Client');
   if (!auth.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
   if (!auth.session) { m.innerHTML = loginView(); return; }
   if (auth.error && !signedIn) { m.innerHTML = `<div class="stack" style="max-width:480px;margin:40px auto"><h1>Not set up yet</h1><p style="color:var(--ink-2)">${esc(auth.error)}</p><button class="btn" data-act="signout">Use a different email</button></div>`; return; }
   if (!store.ready) { m.innerHTML = '<div class="empty">Loading…</div>'; return; }
-  m.innerHTML = (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '');
+  m.innerHTML = pwNudge() + (state.mode==='coach' ? coachView() : clientView()) + (state.picker ? pickerView() : '') + (state.chartModal ? chartModalView() : '') + (state.exEdit ? exEditor() : '') + (state.video ? videoModal() : '') + pwModal();
   m.querySelectorAll('textarea.grow').forEach(autosize);
 }
 function autosize(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
 document.addEventListener('input', e => { if(e.target.tagName==='TEXTAREA' && e.target.classList.contains('grow')) autosize(e.target); });
 
 function loginView(){
+  const linkMode = state.loginMode==='link';
   return `<div class="stack" style="max-width:420px;margin:40px auto">
-    <div><h1>Sign in</h1><div class="muted small">Enter the email address your coach has for you. We'll send you a link; tap it and you're in. No password.</div></div>
-    ${auth.sent ? `<div class="card stack"><b style="color:var(--ink)">Check your inbox</b><div style="color:var(--ink-2)">We sent a sign-in link to <b>${esc(auth.sent)}</b>. Open it on this device. It can take a minute to arrive; check junk if it doesn't.</div><button class="btn ghost sm" data-act="loginAgain" style="align-self:flex-start">Use a different address</button></div>`
-    : `<div class="card stack"><div class="field"><label>Email</label><input id="loginEmail" data-f="loginEmail" type="email" inputmode="email" autocomplete="email" value="${esc(state.loginEmail||'')}" placeholder="you@example.com"></div>${auth.error?`<div class="small" style="color:var(--danger)">${esc(auth.error)}</div>`:''}<button class="btn primary" data-act="sendLink">Send me a sign-in link</button></div>`}
+    <div><h1>Sign in</h1><div class="muted small">${linkMode?'We will email you a link. Tap it and you are in, then set a password for next time.':'Use the email address your coach has for you.'}</div></div>
+    ${auth.sent ? `<div class="card stack"><b style="color:var(--ink)">Check your inbox</b><div style="color:var(--ink-2)">We sent a sign-in link to <b>${esc(auth.sent)}</b>. Open it on this device. It can take a minute to arrive; check junk if it doesn't.</div><button class="btn ghost sm" data-act="loginAgain" style="align-self:flex-start">Back</button></div>`
+    : `<div class="card stack">
+        <div class="field"><label>Email</label><input id="loginEmail" data-f="loginEmail" type="email" inputmode="email" autocomplete="username" value="${esc(state.loginEmail||'')}" placeholder="you@example.com"></div>
+        ${linkMode ? '' : `<div class="field"><label>Password</label><input id="loginPw" data-f="loginPw" type="password" autocomplete="current-password" value="${esc(state.loginPw||'')}" placeholder="Your password"></div>`}
+        ${auth.error?`<div class="small" style="color:var(--danger)">${esc(auth.error)}</div>`:''}
+        ${linkMode ? `<button class="btn primary" data-act="sendLink">Email me a sign-in link</button><button class="btn ghost sm" data-act="loginMode" data-v="pw" style="align-self:flex-start">Back to password sign in</button>`
+                   : `<button class="btn primary" data-act="login">Sign in</button><div class="muted small" style="margin-top:4px">First time here, or forgotten your password?</div><button class="btn ghost sm" data-act="loginMode" data-v="link" style="align-self:flex-start">Email me a sign-in link instead</button>`}
+      </div>`}
   </div>`;
 }
+function hasPassword(){ const u=auth.session && auth.session.user; return !!(u && u.user_metadata && u.user_metadata.has_password); }
+function pwNudge(){ if(LOCAL || !auth.session || hasPassword() || state.pwDismissed) return ''; return `<div class="card row between" style="border-color:var(--camel);margin-bottom:12px"><div><b style="color:var(--ink)">Set a password</b><div class="muted small">Next time you can sign in without waiting for an email.</div></div><span class="row"><button class="btn ghost sm" data-act="pwDismiss">Not now</button><button class="btn sm primary" data-act="pwOpen">Set a password</button></span></div>`; }
+function pwModal(){ if(!state.pw) return ''; return `<div class="picker" data-act="pwClose"><div class="sheet" style="max-width:420px"><header><div class="row between"><h2>${hasPassword()?'Change password':'Set a password'}</h2><button class="btn ghost sm" data-act="pwClose">Close</button></div></header>
+  <div class="stack" style="padding:16px">
+    <div class="field"><label>New password</label><input id="pw1" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>
+    <div class="field"><label>Repeat it</label><input id="pw2" type="password" autocomplete="new-password"></div>
+    <div class="small pwerr" style="color:var(--danger)">${esc(state.pwError||'')}</div>
+    <button class="btn primary" data-act="pwSave">Save password</button>
+  </div></div></div>`; }
 /* ===== coach ===== */
 function coachView(){
   if (state.page==='client' && state.clientId) return coachClient();
@@ -1151,6 +1180,12 @@ document.addEventListener('click', e => {
     case 'video': { e.preventDefault(); if(!embedUrl(el.dataset.url)){ window.open(el.dataset.url,'_blank','noopener'); return; } state.video={url:el.dataset.url, title:el.dataset.title}; render(); break; }
     case 'closeVideo': if (el.classList.contains('picker') && e.target!==el) return; state.video=null; render(); break;
     case 'sendLink': store.sendLink(state.loginEmail||$('#loginEmail').value); break;
+    case 'login': store.signInPw(state.loginEmail||$('#loginEmail').value, state.loginPw||($('#loginPw')||{}).value); break;
+    case 'loginMode': state.loginMode=el.dataset.v; auth.error=''; render(); setTimeout(()=>{ const q=$('#loginEmail'); if(q && !q.value) q.focus(); },30); break;
+    case 'pwOpen': state.pw=true; state.pwError=''; render(); setTimeout(()=>{ const q=$('#pw1'); if(q) q.focus(); },30); break;
+    case 'pwClose': if (el.classList.contains('picker') && e.target!==el) return; state.pw=false; render(); break;
+    case 'pwDismiss': state.pwDismissed=true; render(); break;
+    case 'pwSave': { const a=$('#pw1').value, b=$('#pw2').value; const err=$('.pwerr'); if(a.length<8){ if(err) err.textContent='Use at least 8 characters.'; break; } if(a!==b){ if(err) err.textContent='The two passwords do not match.'; break; } if(err) err.textContent=''; store.setPassword(a); break; }
     case 'loginAgain': auth.sent=false; auth.error=''; render(); break;
     case 'signout': store.signOut(); break;
     case 'assign': { const c=store.clients[state.clientId]; const on = !auth.assignments.some(a=>a.coach_email===el.dataset.v && a.client_id===c.id); store.setAssignment(el.dataset.v, c.id, on); break; }
@@ -1200,6 +1235,7 @@ document.addEventListener('input', e => {
   if (f==='newGoal'){ state.newGoal=el.value; return; }
   if (f==='blockWeeks'){ state.blockWeeks=el.value; return; }
   if (f==='loginEmail'){ state.loginEmail=el.value; return; }
+  if (f==='loginPw'){ state.loginPw=el.value; return; }
   if (f==='newEmail'){ state.newEmail=el.value; return; }
   if (f==='moveDate'){ state.moveDate=el.value; return; }
   if (f==='habitName'){ state.habitName=el.value; return; }
@@ -1245,7 +1281,7 @@ document.addEventListener('touchend', e => { if(!drag) return; if(drag.active){ 
 document.addEventListener('touchcancel', endDrag);
 document.addEventListener('pointermove', e => { if(!drag || e.pointerType==='touch') return; dragMove(e.clientX, e.clientY, e); });
 function endDrag(e){ if(!drag) return; const d=drag; drag=null; clearInterval(d.timer); d.chip.classList.remove('dragging'); d.chip.style.transform=''; document.querySelectorAll('.over').forEach(x=>x.classList.remove('over')); if(!d.active) return; suppressClick=Date.now(); if(d.ex){ const ex=store.exercises[d.id]; if(d.over && ex){ const tc=d.over.dataset.cat, ts=d.over.dataset.sub||null; if(tc!=='Unsorted' && !(tc===d.fromCat && ts===d.fromSub)){ ex.cats=(ex.cats||[]).filter(c=>!(c.cat===d.fromCat && (c.sub||null)===d.fromSub)); if(!ex.cats.some(c=>c.cat===tc && (c.sub||null)===ts)) ex.cats.push({cat:tc, sub:ts}); store.put('exercises', ex); toast(`${ex.name} → ${tc}${ts?' / '+ts:''}`); return; } } render(); return; } const s=store.sessions[d.id]; if(d.over && s && s.date!==d.over.dataset.date){ if(state.mode==='client'){ s.movedFrom=s.movedFrom||s.date; s.movedByClient=true; } s.date=d.over.dataset.date; store.put('sessions',s); toast('Moved to '+fmtDate(s.date)); } else render(); }
-document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='loginEmail'){ e.preventDefault(); store.sendLink(e.target.value); } });
+document.addEventListener('keydown', e => { if(e.key!=='Enter') return; const id=e.target.id; if(id==='loginEmail' || id==='loginPw'){ e.preventDefault(); if(state.loginMode==='link') store.sendLink($('#loginEmail').value); else store.signInPw($('#loginEmail').value, ($('#loginPw')||{}).value); } if(id==='pw1'||id==='pw2'){ e.preventDefault(); const b=document.querySelector('[data-act="pwSave"]'); if(b) b.click(); } });
 let lastPointer=0; document.addEventListener('pointerdown', ()=>{ lastPointer=Date.now(); }, true);
 document.addEventListener('focusin', e => { const el=e.target; if(el.tagName==='INPUT' && el.getAttribute('inputmode') && el.value!=='' && Date.now()-lastPointer<600){ const sel=()=>{ try{ el.select(); }catch(x){} }; sel(); setTimeout(sel,0); } });
 document.addEventListener('pointerup', e => { if(e.pointerType==='touch') return; endDrag(e); }); document.addEventListener('pointercancel', e => { if(e.pointerType==='touch') return; endDrag(e); });
